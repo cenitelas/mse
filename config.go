@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	uuid2 "github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"sync"
@@ -13,7 +14,7 @@ import (
 )
 
 //Config global
-var Config = loadConfig()
+var Config = ConfigST{Server: ServerST{HTTPPort: ":4090"}, Streams: map[string]StreamST{}}
 
 //ConfigST struct
 type ConfigST struct {
@@ -37,9 +38,16 @@ type StreamST struct {
 	Cl       map[string]viewer
 }
 
+type StreamMP4 struct {
+	Codecs []av.CodecData
+	Cl     map[string]viewer
+}
+
 type viewer struct {
 	c chan av.Packet
 }
+
+var Mp4stream = StreamMP4{Cl: make(map[string]viewer)}
 
 func (element *ConfigST) RunIFNotRun(uuid string) {
 	element.mutex.Lock()
@@ -73,6 +81,17 @@ func (element *ConfigST) HasViewer(uuid string) bool {
 	return false
 }
 
+func (element *ConfigST) PushStream(url string) string {
+	stream := StreamST{
+		URL:      url,
+		Cl:       make(map[string]viewer),
+		OnDemand: true,
+	}
+	uuid := uuid2.New().String()
+	element.Streams[uuid] = stream
+	return uuid
+}
+
 func loadConfig() *ConfigST {
 	var tmp ConfigST
 	data, err := ioutil.ReadFile("config.json")
@@ -87,7 +106,17 @@ func loadConfig() *ConfigST {
 		v.Cl = make(map[string]viewer)
 		tmp.Streams[i] = v
 	}
+	log.Println(tmp.Streams["H264_PCMALAW"])
 	return &tmp
+}
+
+func (element *ConfigST) StreamExists(url string) *string {
+	for i, item := range element.Streams {
+		if item.URL == url {
+			return &i
+		}
+	}
+	return nil
 }
 
 func (element *ConfigST) cast(uuid string, pck av.Packet) {
@@ -98,6 +127,18 @@ func (element *ConfigST) cast(uuid string, pck av.Packet) {
 			v.c <- pck
 		}
 	}
+}
+
+func (element *StreamMP4) castMP4(pck av.Packet) {
+	for _, v := range element.Cl {
+		if len(v.c) < cap(v.c) {
+			v.c <- pck
+		}
+	}
+}
+
+func (element *StreamMP4) coAdMP4(codecs []av.CodecData) {
+	element.Codecs = codecs
 }
 
 func (element *ConfigST) ext(suuid string) bool {
@@ -131,12 +172,29 @@ func (element *ConfigST) coGe(suuid string) []av.CodecData {
 	return nil
 }
 
+func (element *StreamMP4) coGeMP4() []av.CodecData {
+	for i := 0; i < 100; i++ {
+		if element.Codecs != nil {
+			return element.Codecs
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return nil
+}
+
 func (element *ConfigST) clAd(suuid string) (string, chan av.Packet) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
 	cuuid := pseudoUUID()
 	ch := make(chan av.Packet, 100)
 	element.Streams[suuid].Cl[cuuid] = viewer{c: ch}
+	return cuuid, ch
+}
+
+func (element *StreamMP4) clAdMP4() (string, chan av.Packet) {
+	cuuid := pseudoUUID()
+	ch := make(chan av.Packet, 100)
+	element.Cl[cuuid] = viewer{c: ch}
 	return cuuid, ch
 }
 
@@ -157,6 +215,10 @@ func (element *ConfigST) clDe(suuid, cuuid string) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
 	delete(element.Streams[suuid].Cl, cuuid)
+}
+
+func (element *StreamMP4) clDeMP4(cuuid string) {
+	delete(element.Cl, cuuid)
 }
 
 func pseudoUUID() (uuid string) {

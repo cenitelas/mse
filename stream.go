@@ -14,13 +14,13 @@ var (
 	ErrorStreamExitNoViewer        = errors.New("Stream Exit On Demand No Viewer")
 )
 
-func serveStreams() {
-	for k, v := range Config.Streams {
-		if !v.OnDemand {
-			go RTSPWorkerLoop(k, v.URL, v.OnDemand)
-		}
-	}
-}
+//func serveStreams() {
+//	for k, v := range Config.Streams {
+//		if !v.OnDemand {
+//			go RTSPWorkerLoop(k, v.URL, v.OnDemand)
+//		}
+//	}
+//}
 
 func RTSPWorkerLoop(name, url string, OnDemand bool) {
 	defer Config.RunUnlock(name)
@@ -75,4 +75,8 @@ func RTSPWorker(name, url string, OnDemand bool) error {
 			Config.cast(name, *packetAV)
 		}
 	}
+}
+
+func MP4Worker() {
+
 }
