@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/deepch/vdk/format"
 	"log"
+	"mse/format"
 	"os"
 	"os/signal"
 	"syscall"
