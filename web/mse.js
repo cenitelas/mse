@@ -4,7 +4,6 @@ class Mse {
         this.ms = null;
         this.sourceBuffer = null
         this.ws = null;
-        this.timeSeek = null;
         this.mimeCodec = ""
         this.live = live
         this.video = video
@@ -19,7 +18,6 @@ class Mse {
     }
 
     destroy (){
-        clearInterval(this.timeSeek)
         this.ws.close()
     }
 
@@ -29,9 +27,11 @@ class Mse {
 
     run = async ()=>{
         await this.video.pause()
-        URL.revokeObjectURL(this.ms)
+        if (this.ms) {
+            this.ms.removeEventListener('sourceopen', this.loadMedia, false)
+        }
         this.ms = new MediaSource()
-        this.ms.addEventListener('sourceopen', this.loadMedia);
+        this.ms.addEventListener('sourceopen', this.loadMedia ,false);
         this.video.src = await URL.createObjectURL(this.ms)
         try {
             await this.video.play();
@@ -41,7 +41,16 @@ class Mse {
     pushPacket = async ()=>{
         if (this.live){
             try {
-                this.sourceBuffer.appendBuffer(this.buffer.shift());
+                if (!this.sourceBuffer.updating) {
+                    this.sourceBuffer.appendBuffer(this.buffer.shift());
+                    let buffered = this.video.buffered
+                    if (buffered.length > 0) {
+                        let end = buffered.end(0)
+                        if (end - this.video.currentTime > 0.15) {
+                            this.video.currentTime = end - 0.1
+                        }
+                    }
+                }
             } catch (e) {
                 console.log(e)
                 return
@@ -53,7 +62,7 @@ class Mse {
                     this.sourceBuffer.appendBuffer(segment);
                 } catch (e) {
                     console.log(e)
-                    this.buffer.unshift(segment)
+                    // this.buffer.unshift(segment)
                     return
                 }
             }
@@ -97,14 +106,17 @@ class Mse {
     loadMedia = async ()=>{
         this.sourceBuffer = this.ms.addSourceBuffer('video/mp4; codecs="' + this.mimeCodec + '"');
         this.sourceBuffer.mode = "segments"
-        // this.sourceBuffer.addEventListener('updateend', (_)=>{
-        //     console.log("DDD")
-        //     this.ms.endOfStream();
-        //     this.video.play();
-        //     //console.log(mediaSource.readyState); // ended
-        // });
         this.sourceBuffer.addEventListener("segment",this.pushPacket)
-        // await this.pushPacket()
+        this.sourceBuffer.addEventListener("updateend", () => {
+            if (this.live) {
+                if (this.sourceBuffer.buffered.length > 1) {
+                    if (this.sourceBuffer.buffered.end(0) - this.video.currentTime > 0.15) {
+                        this.sourceBuffer.remove(0, this.sourceBuffer.buffered.end(0) - 0.1);
+                    }
+                }
+            }
+        })
+
     }
 
 }

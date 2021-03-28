@@ -22,6 +22,7 @@ type Muxer struct {
 	fragmentIndex int
 	streams       []*Stream
 	path          string
+	Codecs        []av.CodecData
 }
 
 func NewMuxer(w *os.File) *Muxer {
@@ -237,6 +238,7 @@ func (self *Muxer) WriteTrailer() (err error) {
 }
 
 func (element *Muxer) WriteHeader(streams []av.CodecData) (err error) {
+	element.Codecs = streams
 	element.streams = []*Stream{}
 	for _, stream := range streams {
 		if err = element.newStream(stream); err != nil {

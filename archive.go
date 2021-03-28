@@ -1,131 +1,43 @@
 package main
 
 import (
-	"errors"
 	"io/ioutil"
 	"log"
 	"mse/av"
 	"mse/av/avutil"
+	"mse/cgo/ffmpeg"
 	"path"
 	"strings"
 	"time"
 )
 
-func durations(paths []string) (time.Duration, error) {
-	timeChan := make(chan time.Duration)
-	errChan := make(chan error)
-
-	go func(tc chan time.Duration, e chan error) {
-		files := make(map[string]av.DemuxCloser)
-		for _, p := range paths {
-			infile, err := avutil.Open(p)
-			if err != nil {
-				e <- err
-				return
-			}
-			files[p] = infile
-		}
-
-		start := false
-		count := 0
-		var err error
-		var totalTime time.Duration
-		var last av.Packet
-		if len(files) == 0 {
-			e <- errors.New("not found")
-			return
-		}
-		for {
-			var pck av.Packet
-
-			if pck, err = files[paths[count]].ReadPacket(); err != nil {
-				totalTime = last.Time
-				if count < len(files)-1 {
-					count++
-					continue
-				} else {
-					break
-				}
-			}
-
-			if pck.IsKeyFrame {
-				start = true
-			}
-			if !start {
-				continue
-			}
-
-			if start {
-				last = pck
-				last.Time += totalTime
-			}
-		}
-		timeChan <- totalTime
-	}(timeChan, errChan)
-
-	select {
-	case t := <-timeChan:
-		return t, nil
-	case e := <-errChan:
-		return 0, e
+func durations(paths []string) time.Duration {
+	Config.mutex.Lock()
+	defer Config.mutex.Unlock()
+	var allDuration time.Duration
+	for _, p := range paths {
+		durationFile := ffmpeg.FileDuration(p)
+		allDuration += time.Duration(durationFile) * time.Second
 	}
+
+	return allDuration
 }
 
-func duration(path string) (time.Duration, error) {
-	timeChan := make(chan time.Duration)
-	errChan := make(chan error)
-
-	go func(tc chan time.Duration, e chan error) {
-
-		infile, err := avutil.Open(path)
-		if err != nil {
-			e <- err
-			return
-		}
-		start := false
-		var totalTime time.Duration
-		var last av.Packet
-		for {
-			var pck av.Packet
-
-			if pck, err = infile.ReadPacket(); err != nil {
-				totalTime = last.Time
-				break
-			}
-
-			if pck.IsKeyFrame {
-				start = true
-			}
-			if !start {
-				continue
-			}
-
-			if start {
-				last = pck
-				last.Time += totalTime
-			}
-		}
-		timeChan <- totalTime
-	}(timeChan, errChan)
-
-	select {
-	case t := <-timeChan:
-		return t, nil
-	case e := <-errChan:
-		return 0, e
-	}
+func duration(path string) time.Duration {
+	durationFile := ffmpeg.FileDuration(path)
+	return time.Duration(durationFile)
 }
 
 func send(p chan av.Packet, paths []string, close chan bool, start time.Time, end time.Time) {
-	files := make(map[string]Vidos)
+	files := make(map[string]Video)
 	for _, pathFile := range paths {
 		in, _ := avutil.Open(pathFile)
 		st, _ := in.Streams()
 		_, fileName := path.Split(pathFile)
 		startTime, _ := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(fileName, ".flv", ""))
-		v := Vidos{
+		v := Video{
 			Data:      in,
-			Streams:   st,
+			Codecs:    st,
 			StartTime: startTime,
 		}
 		files[pathFile] = v
@@ -177,48 +89,57 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 	close <- true
 }
 
-func files(p []string, start time.Time, end time.Time) ([]string, int64) {
+func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]string, int64, time.Duration) {
 	var paths []string
 	var length int64
 	length = 0
-
+	allDuration := time.Duration(0)
 	for _, pz := range p {
 		fs, err := ioutil.ReadDir(pz)
 		if err != nil {
 			log.Println(err)
-			return []string{}, 0
+			return []string{}, 0, 0
 		}
 
 		for i, file := range fs {
 			if !file.IsDir() {
-				length += file.Size()
+				if file.Size() < (1024 * 500) {
+					continue
+				}
+				if checkDuration {
+					dur := duration(path.Join(pz, file.Name()))
+					if dur <= 0 {
+						continue
+					}
+					allDuration += dur
+				}
+
 				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(file.Name(), ".flv", ""))
 				if err != nil {
 					continue
 				}
 
-				if timeFile.Before(start) && i < len(fs)-1 {
-					next, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(fs[i+1].Name(), ".flv", ""))
-					if err != nil {
-						continue
-					}
-					if next.After(start) {
-						paths = append(paths, path.Join(pz, file.Name()))
-					}
-
-				}
-
-				if timeFile.After(start) || timeFile.Equal(start) {
-					paths = append(paths, path.Join(pz, file.Name()))
-				}
-
 				if timeFile.After(end) {
 					break
 				}
+
+				if timeFile.Before(start) && !timeFile.Equal(start) {
+					break
+				}
+
+				if timeFile.After(start) || timeFile.Equal(start) {
+					if len(paths) == 0 && !timeFile.Equal(start) && i > 0 {
+						paths = append(paths, path.Join(pz, fs[i-1].Name()))
+					}
+					paths = append(paths, path.Join(pz, file.Name()))
+					length += file.Size()
+					log.Println(file.Size())
+				}
+
 			}
 		}
 	}
-	return paths, length
+	return paths, length, allDuration
 }
 
 func filesStream(p []string, start time.Time) []string {
@@ -232,24 +153,22 @@ func filesStream(p []string, start time.Time) []string {
 
 		for i, file := range fs {
 			if !file.IsDir() {
-
+				if file.Size() < (1024 * 500) {
+					continue
+				}
 				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(file.Name(), ".flv", ""))
 				if err != nil {
 					continue
 				}
 
-				if timeFile.Before(start) && i < len(fs)-1 {
-					next, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(fs[i+1].Name(), ".flv", ""))
-					if err != nil {
-						continue
-					}
-					if next.After(start) {
-						paths = append(paths, path.Join(pz, file.Name()))
-					}
-
+				if timeFile.Before(start) && !timeFile.Equal(start) {
+					break
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
+					if len(paths) == 0 && !timeFile.Equal(start) && i > 0 {
+						paths = append(paths, path.Join(pz, fs[i-1].Name()))
+					}
 					paths = append(paths, path.Join(pz, file.Name()))
 				}
 			}

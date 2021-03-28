@@ -7,23 +7,23 @@
     <video preload="none" id="livestream" style="width:600px;" controls muted></video>
 </body>
 
-<script src="mse.jsx"></script>
+<script src="mse.js"></script>
 <script>
     const load = async ()=>{
-        const response = await fetch("http://localhost:4090/player", {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({rtsp:"rtsp://stream:protocolRTSP1@10.20.64.20:554/cam/realmonitor?channel=1&subtype=0&unicast=true"})
-        });
+        // const response = await fetch("http://localhost:4090/player", {
+        //     method: 'POST',
+        //     headers: {
+        //         'Content-Type': 'application/json'
+        //     },
+        //     body: JSON.stringify({rtsp:"rtsp://stream:protocolRTSP1@10.23.7.3:554/user=view&password=123456789zz&channel=0&stream=1.sdp"})
+        // });
+        //
+        // let url = await response.json()
 
-        let url = await response.json()
 
-
-         // let player = new Mse("ws://127.0.0.1:4090/ws-archive?path=/home/fivern/media/dev_sda/videos/MGYwYWI/603db39535656142a5117771&start=2021-03-02 09:44:40",document.getElementById("livestream"))
-       //    let player = new Mse("ws://192.168.202.10:8080/NWJmY2I1ODNjNzY2ZThjZTk2ZjgyZTg4/archive/MGYwYWI/6010eece13b65b041d7a6ae4/2021-03-25%2023:29:50",document.getElementById("livestream"))
-          let player = new Mse(url.ws,document.getElementById("livestream"),true)
+          let player = new Mse("ws://127.0.0.1:4090/ws-archive?path=/home/fivern/media&start=2021-02-11%2010:42:57",document.getElementById("livestream"),false)
+         //  let player = new Mse("ws://192.168.202.10:8080/NWJmY2I1ODNjNzY2ZThjZTk2ZjgyZTg4/archive/MGYwYWI/6010eece13b65b041d7a6ae4/2021-03-25%2023:29:50",document.getElementById("livestream"))
+          // let player = new Mse(url.ws,document.getElementById("livestream"),true)
         player.play();
     }
     load()

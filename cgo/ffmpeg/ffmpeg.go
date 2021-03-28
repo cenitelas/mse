@@ -4,7 +4,7 @@ package ffmpeg
 #cgo LDFLAGS: -lavformat -lavutil -lavcodec -lavresample -lswscale
 #include "ffmpeg.h"
 void ffinit() {
-	av_register_all();
+	avformat_network_init();
 }
 */
 import "C"
@@ -24,6 +24,10 @@ const (
 	DEBUG   = int(C.AV_LOG_DEBUG)
 	TRACE   = int(C.AV_LOG_TRACE)
 )
+
+func FileDuration(path string) uint64 {
+	return uint64(C.file_duration(C.CString(path)))
+}
 
 func HasEncoder(name string) bool {
 	return C.avcodec_find_encoder_by_name(C.CString(name)) != nil
