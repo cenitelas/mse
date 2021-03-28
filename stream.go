@@ -77,7 +77,7 @@ func RTSPWorker(stream *Stream) {
 	}
 }
 
-func ArchiveWorker(stream *Stream, paths []string, timeStart time.Time, codecControl chan []av.CodecData) {
+func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string, timeStart time.Time, codecControl chan []av.CodecData) {
 	pathFiles := filesStream(paths, timeStart)
 	files := make(map[string]Video)
 	for _, pathFile := range pathFiles {
@@ -108,24 +108,13 @@ func ArchiveWorker(stream *Stream, paths []string, timeStart time.Time, codecCon
 	var prev av.Packet
 	for {
 		select {
-		case status := <-stream.Status:
-			switch status {
-			case "close":
-				loaded.Data.Close()
-				for _, pathFile := range pathFiles {
-					files[pathFile].Data.Close()
-				}
-				Logger.Info(fmt.Sprintf("Close stream archive"))
-				return
-			case "reconnect":
-				loaded.Data.Close()
-				for _, pathFile := range pathFiles {
-					files[pathFile].Data.Close()
-				}
-				Logger.Info(fmt.Sprintf("Reconnect stream archive"))
-				go ArchiveWorker(stream, paths, timeStart, codecControl)
-				return
+		case <-socketStatus:
+			loaded.Data.Close()
+			for _, pathFile := range pathFiles {
+				files[pathFile].Data.Close()
 			}
+			Logger.Info(fmt.Sprintf("Close stream archive"))
+			return
 		default:
 			var pck av.Packet
 			if count > len(paths)-1 || (count < len(paths) && timeStart.Add(5*time.Second).Before(files[pathFiles[count]].StartTime)) {
@@ -134,7 +123,6 @@ func ArchiveWorker(stream *Stream, paths []string, timeStart time.Time, codecCon
 				}
 				if Meta(totalCodec[0]) != Meta(loaded.Codecs[0]) {
 					codecControl <- codecs
-					Config.coAd(stream.Uuid, codecs)
 					totalCodec = codecs
 					time.Sleep(100 * time.Millisecond)
 				}
@@ -157,7 +145,6 @@ func ArchiveWorker(stream *Stream, paths []string, timeStart time.Time, codecCon
 				}
 				if Meta(totalCodec[0]) != Meta(files[pathFiles[count]].Codecs[0]) {
 					codecControl <- files[pathFiles[count]].Codecs
-					Config.coAd(stream.Uuid, files[pathFiles[count]].Codecs)
 					totalCodec = files[pathFiles[count]].Codecs
 					time.Sleep(100 * time.Millisecond)
 				}
@@ -196,7 +183,7 @@ func ArchiveWorker(stream *Stream, paths []string, timeStart time.Time, codecCon
 
 			pck.Time = timeStream
 
-			Config.cast(stream.Uuid, pck)
+			packet <- pck
 		}
 	}
 	loaded.Data.Close()
@@ -274,8 +261,7 @@ func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av
 	}
 }
 
-func PlayStreamArchive(ws *websocket.Conn, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer, codecControl chan []av.CodecData) {
-	statusSocket := make(chan bool)
+func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websocket.Conn, muxer *mp4f.Muxer, codecControl chan []av.CodecData) {
 	go func() {
 		for {
 			var message string
@@ -286,11 +272,6 @@ func PlayStreamArchive(ws *websocket.Conn, workerStatus chan string, packet chan
 			}
 		}
 	}()
-	interval := time.NewTimer(10 * time.Second)
-	reconnectFun := func() {
-		interval.Reset(10 * time.Second)
-		workerStatus <- "reconnect"
-	}
 
 	for {
 		select {
@@ -303,7 +284,6 @@ func PlayStreamArchive(ws *websocket.Conn, workerStatus chan string, packet chan
 				log.Println(err)
 			}
 			if ready {
-				interval.Reset(10 * time.Second)
 				err := ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
 				if err != nil {
 					log.Println(err)
@@ -315,11 +295,7 @@ func PlayStreamArchive(ws *websocket.Conn, workerStatus chan string, packet chan
 					return
 				}
 			}
-		case <-interval.C:
-			reconnectFun()
-
 		case <-statusSocket:
-			workerStatus <- "close"
 			return
 		}
 	}

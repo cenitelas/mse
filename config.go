@@ -33,18 +33,6 @@ func (element *ConfigST) Run(uuid string) {
 	}
 }
 
-func (element *ConfigST) RunArchive(uuid string, paths []string, start time.Time, codecs chan []av.CodecData) {
-	element.mutex.Lock()
-	defer element.mutex.Unlock()
-	if tmp, ok := element.Streams[uuid]; ok {
-		if !tmp.RunLock {
-			tmp.RunLock = true
-			element.Streams[uuid] = tmp
-			go ArchiveWorker(tmp, paths, start, codecs)
-		}
-	}
-}
-
 func (element *ConfigST) PushStream(url string) string {
 	exists := element.StreamExists(url)
 	if exists != nil {

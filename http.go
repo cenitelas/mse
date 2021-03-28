@@ -171,19 +171,13 @@ func wsArchive(ws *websocket.Conn) {
 		return
 	}
 
-	stream := Stream{Cl: make(map[string]viewer), Status: make(chan string), Uuid: pseudoUUID()}
-	Config.PushStreamArchive(stream)
 	codecs := make(chan []av.CodecData)
-
-	Config.RunArchive(stream.Uuid, paths, start, codecs)
-
-	cuuid, packet, status := Config.clAd(stream.Uuid)
-
-	defer Config.clDe(stream.Uuid, cuuid)
-
+	packet := make(chan av.Packet)
+	status := make(chan bool)
+	go ArchiveWorker(packet, status, paths, start, codecs)
 	mux := mp4f.NewMuxer(nil)
 
-	PlayStreamArchive(ws, status, packet, mux, codecs)
+	PlayStreamArchive(packet, status, ws, mux, codecs)
 
 }
 
