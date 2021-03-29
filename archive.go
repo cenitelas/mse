@@ -89,9 +89,9 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 	close <- true
 }
 
-func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]string, int64, time.Duration) {
+func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]string, int, time.Duration) {
 	var paths []string
-	var length int64
+	var length int
 	length = 0
 	allDuration := time.Duration(0)
 	for _, pz := range p {
@@ -124,7 +124,7 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 				}
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
-					break
+					continue
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
@@ -132,8 +132,7 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 						paths = append(paths, path.Join(pz, fs[i-1].Name()))
 					}
 					paths = append(paths, path.Join(pz, file.Name()))
-					length += file.Size()
-					log.Println(file.Size())
+					length += int(file.Size())
 				}
 
 			}
@@ -162,7 +161,7 @@ func filesStream(p []string, start time.Time) []string {
 				}
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
-					break
+					continue
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
@@ -174,6 +173,5 @@ func filesStream(p []string, start time.Time) []string {
 			}
 		}
 	}
-
 	return paths
 }

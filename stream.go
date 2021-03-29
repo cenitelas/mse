@@ -117,7 +117,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 			return
 		default:
 			var pck av.Packet
-			if count > len(paths)-1 || (count < len(paths) && timeStart.Add(5*time.Second).Before(files[pathFiles[count]].StartTime)) {
+			if count > len(pathFiles)-1 || (count < len(pathFiles) && timeStart.Add(5*time.Second).Before(files[pathFiles[count]].StartTime)) {
 				if loader == false {
 					loader = true
 				}
@@ -125,6 +125,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 					codecControl <- codecs
 					totalCodec = codecs
 					time.Sleep(100 * time.Millisecond)
+					continue
 				}
 
 				if pck, err = loaded.Data.ReadPacket(); err != nil {
@@ -147,6 +148,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 					codecControl <- files[pathFiles[count]].Codecs
 					totalCodec = files[pathFiles[count]].Codecs
 					time.Sleep(100 * time.Millisecond)
+					continue
 				}
 				if pck, err = files[pathFiles[count]].Data.ReadPacket(); err != nil {
 					files[pathFiles[count]].Data.Close()
@@ -156,7 +158,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 				}
 			}
 
-			if timeStart.After(files[pathFiles[count]].StartTime.Add(pck.Time + (5 * time.Second))) {
+			if count < len(pathFiles) && timeStart.After(files[pathFiles[count]].StartTime.Add(pck.Time+(5*time.Second))) {
 				continue
 			}
 
@@ -277,7 +279,6 @@ func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websoc
 		select {
 		case codec := <-codecControl:
 			InitMuxer(muxer, codec, ws)
-			continue
 		case pck := <-packet:
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {

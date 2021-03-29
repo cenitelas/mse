@@ -2,7 +2,6 @@
 package pktque
 
 import (
-	"log"
 	"time"
 
 	"mse/av"
@@ -168,7 +167,6 @@ func (self *AVSync) check(i int) (start time.Duration, end time.Duration, correc
 	start = self.time[minidx]
 	end = start + self.MaxTimeDiff
 	correcttime = start + time.Millisecond*40
-	log.Println("DDDD")
 	return
 }
 

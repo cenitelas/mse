@@ -84,21 +84,20 @@ func archive(c *gin.Context) {
 		return
 	}
 	var pathFiles []string
-	var length int64
+	//var length int
 
 	var dur time.Duration
 	if st.Duration == 0 {
-		pathFiles, length, dur = files(st.Path, start, end, true)
+		pathFiles, _, dur = files(st.Path, start, end, true)
 	} else {
-		pathFiles, length, _ = files(st.Path, start, end, false)
+		pathFiles, _, _ = files(st.Path, start, end, false)
 		dur = time.Duration(st.Duration) * time.Second
 	}
-
 	if len(pathFiles) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "not found"})
 		return
 	}
-	length = int64(float64(length) * 0.99089030161)
+
 	format := "mp4"
 	if st.Ext == "avi" {
 		format = "x-msvideo"
@@ -106,7 +105,7 @@ func archive(c *gin.Context) {
 
 	c.Writer.Header().Add("Content-type", fmt.Sprintf("video/%s", format))
 	c.Writer.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.%s\"", st.Name, st.Ext))
-	c.Writer.Header().Add("Content-Length", fmt.Sprintf("%d", length))
+	//c.Writer.Header().Add("Content-Length", fmt.Sprintf("%d", length))
 
 	loaded, _ := avutil.Open(pathFiles[0])
 	streams, _ := loaded.Streams()
