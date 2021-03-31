@@ -45,6 +45,7 @@ func (element *ConfigST) PushStream(url string) string {
 		Status: make(chan string),
 	}
 	element.Streams[stream.Uuid] = &stream
+	Logger.Info("Push rtsp :" + url)
 	return stream.Uuid
 }
 

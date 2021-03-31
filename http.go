@@ -84,13 +84,13 @@ func archive(c *gin.Context) {
 		return
 	}
 	var pathFiles []string
-	//var length int
+	var length int
 
 	var dur time.Duration
 	if st.Duration == 0 {
-		pathFiles, _, dur = files(st.Path, start, end, true)
+		pathFiles, length, dur = files(st.Path, start, end, true)
 	} else {
-		pathFiles, _, _ = files(st.Path, start, end, false)
+		pathFiles, length, _ = files(st.Path, start, end, false)
 		dur = time.Duration(st.Duration) * time.Second
 	}
 	if len(pathFiles) == 0 {
@@ -105,7 +105,7 @@ func archive(c *gin.Context) {
 
 	c.Writer.Header().Add("Content-type", fmt.Sprintf("video/%s", format))
 	c.Writer.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.%s\"", st.Name, st.Ext))
-	//c.Writer.Header().Add("Content-Length", fmt.Sprintf("%d", length))
+	c.Writer.Header().Add("Video-Length", fmt.Sprintf("%d", length))
 
 	loaded, _ := avutil.Open(pathFiles[0])
 	streams, _ := loaded.Streams()
@@ -177,6 +177,7 @@ func wsArchive(ws *websocket.Conn) {
 	mux := mp4f.NewMuxer(nil)
 
 	PlayStreamArchive(packet, status, ws, mux, codecs)
+	Logger.Success(fmt.Sprintf("Close stream %s", start.String()))
 
 }
 

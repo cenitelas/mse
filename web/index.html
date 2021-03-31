@@ -9,22 +9,25 @@
 
 <script src="mse.js"></script>
 <script>
+    let player = null;
     const load = async ()=>{
-        // const response = await fetch("http://localhost:4090/player", {
-        //     method: 'POST',
-        //     headers: {
-        //         'Content-Type': 'application/json'
-        //     },
-        //     body: JSON.stringify({rtsp:"rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true"})
-        // });
-        //
-        // let url = await response.json()
+       const response = await fetch("http://localhost:4090/player", {
+           method: 'POST',
+           headers: {
+               'Content-Type': 'application/json'
+           },
+           body: JSON.stringify({rtsp:"rtsp://admin:view2020@192.168.202.159:554/cam/realmonitor?channel=1&subtype=0"})
+       });
+
+       let url = await response.json()
+
 
 
         //http://127.0.0.1:4090/archive?path[]=/home/fivern/media/dev_sda/videos/MGYwYWI/600a47a12cec33053cb35d33&start=2021-01-26%2014:43:07&end=2021-03-26%2021:50:00&ext=avi&name=archive
-         let player = new Mse("ws://10.36.100.207:8080/ZTRjNTYyMzg3ODE0NTM1M2Y2ZmRmMGNl/archive/OTZkOGJ/60475a69532d036b32574f45/2021-03-29T07:00:00+0600",document.getElementById("livestream"))
+
         //    let player = new Mse("ws://10.36.100.207:8080/ZTRjNTYyMzg3ODE0NTM1M2Y2ZmRmMGNl/archive/OTZkOGJ/60475a69532d036b32574f45/2021-03-29T10:00:00+0600",document.getElementById("livestream"),false)
-        // let player = new Mse(url.ws,document.getElementById("livestream"),true)
+        player = new Mse(url.ws,document.getElementById("livestream"),false)
+       // let player = new Mse("ws://192.168.202.10:8080/NWJmY2I1ODNjNzY2ZThjZTk2ZjgyZTg4/archive/MGYwYWI/60002b5efae61c04bce92362/2021-03-30T15:29:30+0600/",document.getElementById("livestream"),false)
         player.play();
     }
     load()

@@ -16,12 +16,13 @@ import (
 )
 
 type Stream struct {
-	Uuid    string
-	URL     string
-	RunLock bool
-	Codecs  []av.CodecData
-	Cl      map[string]viewer
-	Status  chan string
+	Uuid           string
+	URL            string
+	RunLock        bool
+	Codecs         []av.CodecData
+	Cl             map[string]viewer
+	Status         chan string
+	ReconnectCount int
 }
 
 type Video struct {
@@ -44,7 +45,7 @@ func RTSPWorker(stream *Stream) {
 	}
 	defer inRtsp.Close()
 	codec, _ := inRtsp.Streams()
-	stream.Codecs = codec
+	stream.Codecs = []av.CodecData{codec[0]}
 
 	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
 	for {
@@ -52,8 +53,17 @@ func RTSPWorker(stream *Stream) {
 		case status := <-stream.Status:
 			switch status {
 			case "reconnect":
+				if stream.ReconnectCount > 60 {
+					stream.ReconnectCount = 0
+					inRtsp.Close()
+					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
+					Config.RunUnlock(stream.Uuid)
+					return
+				}
+				time.Sleep(3 * time.Second)
 				inRtsp.Close()
 				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+				stream.ReconnectCount += 1
 				go RTSPWorker(stream)
 				return
 			case "close":
@@ -71,7 +81,9 @@ func RTSPWorker(stream *Stream) {
 				go RTSPWorker(stream)
 				return
 			}
-
+			if codec[pck.Idx].Type().IsAudio() {
+				continue
+			}
 			Config.cast(stream.Uuid, pck)
 		}
 	}
@@ -79,6 +91,7 @@ func RTSPWorker(stream *Stream) {
 
 func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string, timeStart time.Time, codecControl chan []av.CodecData) {
 	pathFiles := filesStream(paths, timeStart)
+	Logger.Success(fmt.Sprintf("Start stream %s in files:", timeStart.String()))
 	files := make(map[string]Video)
 	for _, pathFile := range pathFiles {
 		in, _ := avutil.Open(pathFile)

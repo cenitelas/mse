@@ -7,6 +7,7 @@ import (
 	"mse/av/avutil"
 	"mse/cgo/ffmpeg"
 	"path"
+	"sort"
 	"strings"
 	"time"
 )
@@ -127,8 +128,13 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 					continue
 				}
 
-				if timeFile.After(start) || timeFile.Equal(start) {
-					if len(paths) == 0 && !timeFile.Equal(start) && i > 0 {
+				if timeFile.Equal(start) {
+					paths = append(paths, path.Join(pz, fs[i-1].Name()))
+					continue
+				}
+
+				if timeFile.After(start) {
+					if len(paths) == 0 && i > 0 {
 						paths = append(paths, path.Join(pz, fs[i-1].Name()))
 					}
 					paths = append(paths, path.Join(pz, file.Name()))
@@ -138,6 +144,7 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 			}
 		}
 	}
+	sortPath(paths)
 	return paths, length, allDuration
 }
 
@@ -173,5 +180,23 @@ func filesStream(p []string, start time.Time) []string {
 			}
 		}
 	}
+	sortPath(paths)
 	return paths
+}
+
+func sortPath(paths []string) {
+	sort.SliceStable(paths, func(i, j int) bool {
+		_, fileNameA := path.Split(paths[i])
+		timeFileA, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(fileNameA, ".flv", ""))
+		if err != nil {
+			return false
+		}
+
+		_, fileNameB := path.Split(paths[j])
+		timeFileB, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(fileNameB, ".flv", ""))
+		if err != nil {
+			return false
+		}
+		return timeFileA.Before(timeFileB)
+	})
 }

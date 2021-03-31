@@ -17,8 +17,11 @@ class Mse {
         }
     }
 
-    destroy (){
-        this.ws.close()
+    destroy = ()=>{
+        this.mimeCodec = ""
+        this.buffer = []
+        this.sourceBuffer = null
+        this.ws?.close()
     }
 
     play  = ()=>{
@@ -46,8 +49,8 @@ class Mse {
                     let buffered = this.video.buffered
                     if (buffered.length > 0) {
                         let end = buffered.end(0)
-                        if (end - this.video.currentTime > 0.15) {
-                            this.video.currentTime = end - 0.1
+                        if (end - this.video.currentTime > 0.25) {
+                            this.video.currentTime = end - 0.2
                         }
                     }
                 }
@@ -71,14 +74,14 @@ class Mse {
     }
 
 
-    connect = ()=>{
-        this.ws = new WebSocket(this.url);
+    connect = (url)=>{
+        this.destroy()
+        this.ws = new WebSocket(url ?? this.url);
         this.ws.binaryType = "arraybuffer";
         this.ws.onopen = function(event) {
             console.log('Connect ' + this.url);
         }
         this.ws.onmessage = async (event)=>{
-
             let data = new Uint8Array(event.data);
             if (data[0] === 9) {
                 let decoded_arr=data.slice(1);
@@ -112,11 +115,7 @@ class Mse {
         this.sourceBuffer.addEventListener("segment",this.pushPacket)
         this.sourceBuffer.addEventListener("updateend", () => {
             if (this.live) {
-                if (this.sourceBuffer.buffered.length > 1) {
-                    if (this.sourceBuffer.buffered.end(0) - this.video.currentTime > 0.15) {
-                        this.sourceBuffer.remove(0, this.sourceBuffer.buffered.end(0) - 0.1);
-                    }
-                }
+
             }
         })
 
