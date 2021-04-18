@@ -36,17 +36,31 @@ func (element *ConfigST) Run(uuid string) {
 func (element *ConfigST) PushStream(url string) string {
 	exists := element.StreamExists(url)
 	if exists != nil {
+		Logger.Info(fmt.Sprintf("Stream exist: %s", url))
 		return exists.Uuid
 	}
 	stream := Stream{
-		Uuid:   uuid2.New().String(),
-		URL:    url,
-		Cl:     make(map[string]viewer),
-		Status: make(chan string),
+		Uuid:           uuid2.New().String(),
+		URL:            url,
+		Cl:             make(map[string]viewer),
+		Status:         make(chan string),
+		ReconnectCount: 0,
 	}
 	element.Streams[stream.Uuid] = &stream
 	Logger.Info("Push rtsp :" + url)
 	return stream.Uuid
+}
+
+func (element *ConfigST) RemoveStream(url string) bool {
+	exists := element.StreamExists(url)
+	if exists == nil {
+		Logger.Info(fmt.Sprintf("Stream not exist: %s", url))
+		return false
+	}
+	element.Streams[exists.Uuid].Status <- "close"
+	delete(element.Streams, exists.Uuid)
+	Logger.Info("Remove rtsp :" + url)
+	return true
 }
 
 func (element *ConfigST) PushStreamArchive(stream Stream) string {

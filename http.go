@@ -11,6 +11,7 @@ import (
 	"mse/av/avutil"
 	"mse/format/mp4f"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,7 @@ func serveHTTP() {
 		AllowHeaders: []string{"*"},
 	}))
 	router.POST("/player", player)
+	router.POST("/remove", remove)
 	router.GET("/ws-archive", func(c *gin.Context) {
 		handler := websocket.Handler(wsArchive)
 		handler.ServeHTTP(c.Writer, c.Request)
@@ -32,16 +34,21 @@ func serveHTTP() {
 		handler := websocket.Handler(online)
 		handler.ServeHTTP(c.Writer, c.Request)
 	})
+	router.GET("/online-http", onlineHttp)
+	router.GET("/archive-http", httpArchive)
+	router.GET("/echo", func(c *gin.Context) {
+		handler := websocket.Handler(echo)
+		handler.ServeHTTP(c.Writer, c.Request)
+	})
 	router.GET("/archive", archive)
 	err := router.Run(Config.Server.HTTPPort)
 	if err != nil {
 		log.Fatalln(err)
 	}
 }
-
 func player(c *gin.Context) {
 	var rtsp = struct {
-		Rtsp string `json:"rtsp"`
+		Rtsp string `json:"rtsp" binding:"required"`
 	}{}
 
 	if err := c.Bind(&rtsp); !errors.Is(err, nil) {
@@ -51,18 +58,36 @@ func player(c *gin.Context) {
 
 	uuid := Config.PushStream(rtsp.Rtsp)
 
-	c.JSON(http.StatusOK, gin.H{"ws": "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uuid})
-
+	c.JSON(http.StatusOK, gin.H{
+		"ws":   "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uuid,
+		"http": "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uuid,
+	})
 }
+func remove(c *gin.Context) {
+	var rtsp = struct {
+		Rtsp string `json:"rtsp" binding:"required"`
+	}{}
 
+	if err := c.Bind(&rtsp); !errors.Is(err, nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+
+	if Config.RemoveStream(rtsp.Rtsp) {
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	} else {
+		c.JSON(http.StatusOK, gin.H{"status": "error"})
+	}
+}
 func archive(c *gin.Context) {
 	var st = struct {
-		Path     []string `form:"path[]" binding:"required"`
-		Start    string   `form:"start" binding:"required"`
-		End      string   `form:"end" binding:"required"`
-		Ext      string   `form:"ext" binding:"required"`
-		Name     string   `form:"name"`
-		Duration int32    `form:"duration"`
+		Path      []string `form:"path[]" binding:"required"`
+		Start     string   `form:"start" binding:"required"`
+		End       string   `form:"end" binding:"required"`
+		Ext       string   `form:"ext" binding:"required"`
+		Name      string   `form:"name"`
+		Duration  int32    `form:"duration"`
+		FileStart string   `form:"file_start"`
 	}{
 		Name:     "video",
 		Duration: 0,
@@ -84,13 +109,13 @@ func archive(c *gin.Context) {
 		return
 	}
 	var pathFiles []string
-	var length int
+	//var length int
 
 	var dur time.Duration
 	if st.Duration == 0 {
-		pathFiles, length, dur = files(st.Path, start, end, true)
+		pathFiles, _, dur = files(st.Path, start, end, st.FileStart, true)
 	} else {
-		pathFiles, length, _ = files(st.Path, start, end, false)
+		pathFiles, _, _ = files(st.Path, start, end, st.FileStart, false)
 		dur = time.Duration(st.Duration) * time.Second
 	}
 	if len(pathFiles) == 0 {
@@ -105,7 +130,7 @@ func archive(c *gin.Context) {
 
 	c.Writer.Header().Add("Content-type", fmt.Sprintf("video/%s", format))
 	c.Writer.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.%s\"", st.Name, st.Ext))
-	c.Writer.Header().Add("Video-Length", fmt.Sprintf("%d", length))
+	//c.Writer.Header().Add("Video-Length", fmt.Sprintf("%d", length))
 
 	loaded, _ := avutil.Open(pathFiles[0])
 	streams, _ := loaded.Streams()
@@ -145,14 +170,22 @@ func archive(c *gin.Context) {
 		}
 	}
 }
-
+func echo(ws *websocket.Conn) {
+	var message string
+	err := websocket.Message.Receive(ws, &message)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println(message)
+	websocket.Message.Send(ws, message)
+}
 func wsArchive(ws *websocket.Conn) {
 	defer ws.Close()
 	queryPath := ws.Request().FormValue("path")
 	ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 
 	if len(queryPath) == 0 {
-		log.Fatal("Path required")
+		log.Print("Path required")
 		return
 	}
 
@@ -164,6 +197,13 @@ func wsArchive(ws *websocket.Conn) {
 		return
 	}
 
+	querySpeed, err := strconv.Atoi(ws.Request().FormValue("speed"))
+	if err != nil {
+		querySpeed = 1
+	}
+
+	queryFileStart := ws.Request().FormValue("file_start")
+
 	start, err := time.Parse("2006-01-02 15:04:05", queryStart)
 	if err != nil {
 		log.Print(err)
@@ -173,25 +213,55 @@ func wsArchive(ws *websocket.Conn) {
 	codecs := make(chan []av.CodecData)
 	packet := make(chan av.Packet)
 	status := make(chan bool)
-	go ArchiveWorker(packet, status, paths, start, codecs)
+	go ArchiveWorker(packet, status, paths, start, codecs, queryFileStart, querySpeed)
 	mux := mp4f.NewMuxer(nil)
 
 	PlayStreamArchive(packet, status, ws, mux, codecs)
 	Logger.Success(fmt.Sprintf("Close stream %s", start.String()))
 
 }
+func httpArchive(c *gin.Context) {
+	var st = struct {
+		Path      []string `form:"path[]" binding:"required"`
+		Start     string   `form:"start" binding:"required"`
+		Speed     int      `form:"speed"`
+		FileStart string   `form:"file_start"`
+	}{Speed: 1}
+	if err := c.Bind(&st); !errors.Is(err, nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 
+	start, err := time.Parse("2006-01-02 15:04:05", st.Start)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	codecs := make(chan []av.CodecData)
+	packet := make(chan av.Packet)
+	status := make(chan bool)
+	go ArchiveWorker(packet, status, st.Path, start, codecs, st.FileStart, st.Speed)
+	mux := mp4f.NewMuxer(nil)
+
+	PlayStreamArchiveHttp(packet, status, c, mux, codecs)
+	Logger.Success(fmt.Sprintf("Close stream %s", start.String()))
+
+}
 func online(ws *websocket.Conn) {
 	defer ws.Close()
 	ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
 
 	suuid := ws.Request().FormValue("uuid")
-	log.Println(suuid)
+
 	if suuid == "" {
 		ws.Close()
 		return
 	}
-
+	if !Config.ext(suuid) {
+		ws.Close()
+		return
+	}
 	Config.Run(suuid)
 	ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	cuuid, packet, status := Config.clAd(suuid)
@@ -199,6 +269,7 @@ func online(ws *websocket.Conn) {
 	defer Config.clDe(suuid, cuuid)
 
 	codecs := Config.coGe(suuid)
+
 	muxer := mp4f.NewMuxer(nil)
 	err := InitMuxer(muxer, codecs, ws)
 	if err != nil {
@@ -208,4 +279,32 @@ func online(ws *websocket.Conn) {
 	Logger.Info("Client connect to stream " + suuid)
 	PlayStreamRTSP(ws, status, packet, muxer)
 	Logger.Info("Client disconnect to stream " + suuid)
+}
+func onlineHttp(c *gin.Context) {
+	var data = struct {
+		Suuid string `form:"uuid" binding:"required"`
+	}{}
+
+	if err := c.Bind(&data); !errors.Is(err, nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !Config.ext(data.Suuid) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Stream not exists"})
+		return
+	}
+
+	Config.Run(data.Suuid)
+
+	cuuid, packet, status := Config.clAd(data.Suuid)
+
+	defer Config.clDe(data.Suuid, cuuid)
+
+	codecs := Config.coGe(data.Suuid)
+	muxer := mp4f.NewMuxer(nil)
+	InitMuxerHttp(muxer, codecs, c)
+	Logger.Info("Client connect to stream " + data.Suuid)
+	PlayStreamRTSPHTTP(c, status, packet, muxer)
+	Logger.Info("Client disconnect to stream " + data.Suuid)
 }

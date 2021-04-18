@@ -90,7 +90,7 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 	close <- true
 }
 
-func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]string, int, time.Duration) {
+func files(p []string, start time.Time, end time.Time, fileStart string, checkDuration bool) ([]string, int, time.Duration) {
 	var paths []string
 	var length int
 	length = 0
@@ -112,7 +112,7 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 					if dur <= 0 {
 						continue
 					}
-					allDuration += dur
+					allDuration += dur * time.Second
 				}
 
 				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(file.Name(), ".flv", ""))
@@ -125,18 +125,25 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 				}
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
+					if len(paths) == 0 && checkDuration {
+						dur := duration(path.Join(pz, file.Name()))
+						if timeFile.Add(dur * time.Second).After(start) {
+							paths = append(paths, path.Join(pz, file.Name()))
+							length += int(file.Size())
+						}
+					} else if file.Name() == fileStart {
+						paths = append(paths, path.Join(pz, file.Name()))
+						length += int(file.Size())
+					}
 					continue
 				}
 
 				if timeFile.Equal(start) {
-					paths = append(paths, path.Join(pz, fs[i-1].Name()))
+					paths = append(paths, path.Join(pz, fs[i].Name()))
 					continue
 				}
 
 				if timeFile.After(start) {
-					if len(paths) == 0 && i > 0 {
-						paths = append(paths, path.Join(pz, fs[i-1].Name()))
-					}
 					paths = append(paths, path.Join(pz, file.Name()))
 					length += int(file.Size())
 				}
@@ -148,7 +155,7 @@ func files(p []string, start time.Time, end time.Time, checkDuration bool) ([]st
 	return paths, length, allDuration
 }
 
-func filesStream(p []string, start time.Time) []string {
+func filesStream(p []string, start time.Time, fileStart string) []string {
 	var paths []string
 	for _, pz := range p {
 		fs, err := ioutil.ReadDir(pz)
@@ -157,7 +164,7 @@ func filesStream(p []string, start time.Time) []string {
 			return []string{}
 		}
 
-		for i, file := range fs {
+		for _, file := range fs {
 			if !file.IsDir() {
 				if file.Size() < (1024 * 500) {
 					continue
@@ -168,13 +175,13 @@ func filesStream(p []string, start time.Time) []string {
 				}
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
+					if file.Name() == fileStart {
+						paths = append(paths, path.Join(pz, file.Name()))
+					}
 					continue
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
-					if len(paths) == 0 && !timeFile.Equal(start) && i > 0 {
-						paths = append(paths, path.Join(pz, fs[i-1].Name()))
-					}
 					paths = append(paths, path.Join(pz, file.Name()))
 				}
 			}

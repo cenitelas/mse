@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/net/websocket"
 	"log"
 	"mse/av"
@@ -44,16 +45,40 @@ func RTSPWorker(stream *Stream) {
 		return
 	}
 	defer inRtsp.Close()
-	codec, _ := inRtsp.Streams()
-	stream.Codecs = []av.CodecData{codec[0]}
 
+	stream.ReconnectCount++
+	if stream.ReconnectCount > 10 {
+		stream.ReconnectCount = 0
+		inRtsp.Close()
+		Logger.Error(fmt.Sprintf("Offline :%s", stream.URL))
+		Config.RunUnlock(stream.Uuid)
+		return
+	}
+
+	codecs, err := inRtsp.Streams()
+
+	if err != nil {
+		Logger.Error(err.Error())
+	}
+	var codec av.CodecData
+	if len(codecs) > 0 {
+		codec = codecs[0]
+	} else {
+		Logger.Error("Codec error: len = 0")
+		time.Sleep(3 * time.Second)
+		inRtsp.Close()
+		Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+		go RTSPWorker(stream)
+		return
+	}
+	stream.Codecs = []av.CodecData{codec}
 	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
 	for {
 		select {
 		case status := <-stream.Status:
 			switch status {
 			case "reconnect":
-				if stream.ReconnectCount > 60 {
+				if stream.ReconnectCount > 10 {
 					stream.ReconnectCount = 0
 					inRtsp.Close()
 					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
@@ -63,7 +88,6 @@ func RTSPWorker(stream *Stream) {
 				time.Sleep(3 * time.Second)
 				inRtsp.Close()
 				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-				stream.ReconnectCount += 1
 				go RTSPWorker(stream)
 				return
 			case "close":
@@ -78,19 +102,21 @@ func RTSPWorker(stream *Stream) {
 			if pck, err = inRtsp.ReadPacket(); err != nil {
 				inRtsp.Close()
 				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+				time.Sleep(3 * time.Second)
 				go RTSPWorker(stream)
 				return
 			}
-			if codec[pck.Idx].Type().IsAudio() {
+			if codecs[pck.Idx].Type().IsAudio() {
 				continue
 			}
+			stream.ReconnectCount = 0
 			Config.cast(stream.Uuid, pck)
 		}
 	}
 }
 
-func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string, timeStart time.Time, codecControl chan []av.CodecData) {
-	pathFiles := filesStream(paths, timeStart)
+func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string, timeStart time.Time, codecControl chan []av.CodecData, fileStart string, speed int) {
+	pathFiles := filesStream(paths, timeStart, fileStart)
 	Logger.Success(fmt.Sprintf("Start stream %s in files:", timeStart.String()))
 	files := make(map[string]Video)
 	for _, pathFile := range pathFiles {
@@ -191,9 +217,9 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 				prev = pck
 			}
 
-			timeStream += pck.Time - prev.Time
+			timeStream += (pck.Time - prev.Time) / time.Duration(speed)
 			timeStart = timeStart.Add(pck.Time - prev.Time)
-			time.Sleep(pck.Time - prev.Time)
+			time.Sleep((pck.Time - prev.Time) / time.Duration(speed))
 			prev = pck
 
 			pck.Time = timeStream
@@ -315,6 +341,78 @@ func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websoc
 	}
 }
 
+func PlayStreamArchiveHttp(packet chan av.Packet, statusSocket chan bool, c *gin.Context, muxer *mp4f.Muxer, codecControl chan []av.CodecData) {
+	for {
+		select {
+		case codec := <-codecControl:
+			InitMuxerHttp(muxer, codec, c)
+		case pck := <-packet:
+			ready, buf, err := muxer.WritePacket(pck, false)
+			if err != nil {
+				log.Println(err)
+			}
+			if ready {
+				c.Writer.Write(buf)
+			}
+		case <-statusSocket:
+			return
+		}
+	}
+}
+
+func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer) {
+	statusSocket := make(chan bool)
+	interval := time.NewTimer(10 * time.Second)
+	reconnectFun := func() {
+		interval.Reset(10 * time.Second)
+		workerStatus <- "reconnect"
+	}
+
+	timeStream := time.Duration(0)
+	var prev av.Packet
+	keyframe := false
+
+	for {
+		select {
+
+		case pck := <-packet:
+			if pck.IsKeyFrame {
+				keyframe = true
+			}
+
+			if !keyframe {
+				continue
+			}
+
+			if (pck.Time - prev.Time) < 0 {
+				prev = pck
+			}
+
+			if prev.Time == 0 {
+				prev = pck
+			}
+
+			timeStream += pck.Time - prev.Time
+			prev = pck
+			pck.Time = timeStream
+
+			ready, buf, err := muxer.WritePacket(pck, false)
+			if err != nil {
+				log.Println(err)
+			}
+			if ready {
+				interval.Reset(10 * time.Second)
+				c.Writer.Write(buf)
+			}
+		case <-interval.C:
+			reconnectFun()
+
+		case <-statusSocket:
+			return
+		}
+	}
+}
+
 func InitMuxer(muxer *mp4f.Muxer, codec []av.CodecData, ws *websocket.Conn) error {
 	Config.mutex.Lock()
 	defer Config.mutex.Unlock()
@@ -335,6 +433,20 @@ func InitMuxer(muxer *mp4f.Muxer, codec []av.CodecData, ws *websocket.Conn) erro
 		Logger.Error(fmt.Sprintf("Websocket: %s", err.Error()))
 		return err
 	}
+	return nil
+}
+
+func InitMuxerHttp(muxer *mp4f.Muxer, codec []av.CodecData, c *gin.Context) error {
+	Config.mutex.Lock()
+	defer Config.mutex.Unlock()
+	err := muxer.WriteHeader(codec)
+	if err != nil {
+		Logger.Error(fmt.Sprintf("Muxer: %s", err.Error()))
+		return err
+	}
+	_, init := muxer.GetInit(0)
+
+	c.Writer.Write(init)
 	return nil
 }
 

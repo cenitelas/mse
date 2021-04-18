@@ -1,0 +1,50 @@
+<html lang="en">
+<head>
+    <title>rtsp-bench</title>
+    <style>
+        video {
+            width:200px;
+            padding: 2px;
+        }
+    </style>
+</head>
+
+<body>
+
+</body>
+
+<script src="mse.js"></script>
+<script>
+    const load = async ()=>{
+
+        const response = await fetch("http://localhost:4090/player", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({rtsp: "rtsp://view:123456789zz@10.20.20.36:554/cam/realmonitor?channel=1&subtype=1"})
+        });
+
+        let url = await response.json()
+
+    
+            let video = document.createElement('video')
+            video.controls = true
+            video.muted = true
+            document.body.appendChild(video)
+            //    let player = new Mse("ws://10.36.100.207:8080/ZTRjNTYyMzg3ODE0NTM1M2Y2ZmRmMGNl/archive/OTZkOGJ/60475a69532d036b32574f45/2021-03-29T10:00:00+0600",document.getElementById("livestream"),false)
+            let player = new Mse(url.ws, video, true, {
+                afterStart: () => {
+                    // console.log("Start")
+                }
+            })
+            player.start();
+            await new Promise(r => setTimeout(r, 200))
+        
+    }
+    load()
+
+
+
+</script>
+</html>
