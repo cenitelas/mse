@@ -28,26 +28,36 @@ func (element *ConfigST) Run(uuid string) {
 		if !tmp.RunLock {
 			tmp.RunLock = true
 			element.Streams[uuid] = tmp
-			go RTSPWorker(tmp)
+			if tmp.Type == "rtmp" {
+				go RTMPWorker(tmp)
+			} else {
+				go RTSPWorker(tmp)
+			}
 		}
 	}
 }
 
-func (element *ConfigST) PushStream(url string) string {
+func (element *ConfigST) PushStream(url string, t string) string {
+	if len(url) == 0 {
+		return ""
+	}
 	exists := element.StreamExists(url)
 	if exists != nil {
 		Logger.Info(fmt.Sprintf("Stream exist: %s", url))
 		return exists.Uuid
 	}
+
 	stream := Stream{
 		Uuid:           uuid2.New().String(),
 		URL:            url,
+		Type:           t,
 		Cl:             make(map[string]viewer),
 		Status:         make(chan string),
 		ReconnectCount: 0,
+		Run:            false,
 	}
 	element.Streams[stream.Uuid] = &stream
-	Logger.Info("Push rtsp :" + url)
+	Logger.Info("Push :" + url)
 	return stream.Uuid
 }
 
@@ -57,7 +67,13 @@ func (element *ConfigST) RemoveStream(url string) bool {
 		Logger.Info(fmt.Sprintf("Stream not exist: %s", url))
 		return false
 	}
-	element.Streams[exists.Uuid].Status <- "close"
+	tmp, ok := element.Streams[exists.Uuid]
+	if ok && tmp.Run {
+		Config.RunUnlock(exists.Uuid)
+		tmp.Status <- "close"
+		element.Streams[exists.Uuid] = tmp
+	}
+	close(element.Streams[exists.Uuid].Status)
 	delete(element.Streams, exists.Uuid)
 	Logger.Info("Remove rtsp :" + url)
 	return true
@@ -74,8 +90,10 @@ func loadConfig() *ConfigST {
 
 func (element *ConfigST) StreamExists(url string) *Stream {
 	for _, item := range element.Streams {
-		if item.URL == url {
-			return element.Streams[item.Uuid]
+		if len(url) > 0 {
+			if item.URL == url {
+				return element.Streams[item.Uuid]
+			}
 		}
 	}
 	return nil
@@ -104,6 +122,9 @@ func (element *ConfigST) HasViewer(uuid string) bool {
 func (element *ConfigST) cast(uuid string, pck av.Packet) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
+	if _, ok := element.Streams[uuid]; !ok {
+		return
+	}
 	for _, v := range element.Streams[uuid].Cl {
 		if len(v.c) < cap(v.c) {
 			v.c <- pck
@@ -112,8 +133,6 @@ func (element *ConfigST) cast(uuid string, pck av.Packet) {
 }
 
 func (element *ConfigST) ext(uuid string) bool {
-	element.mutex.Lock()
-	defer element.mutex.Unlock()
 	_, ok := element.Streams[uuid]
 	return ok
 }
@@ -168,7 +187,9 @@ func (element *ConfigST) list() (string, []string) {
 func (element *ConfigST) clDe(uuid, cuuid string) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
-	delete(element.Streams[uuid].Cl, cuuid)
+	if element.ext(uuid) {
+		delete(element.Streams[uuid].Cl, cuuid)
+	}
 }
 
 func pseudoUUID() (uuid string) {

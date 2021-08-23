@@ -48,7 +48,8 @@ func serveHTTP() {
 }
 func player(c *gin.Context) {
 	var rtsp = struct {
-		Rtsp string `json:"rtsp" binding:"required"`
+		Rtsp string `json:"rtsp"`
+		Rtmp string `json:"rtmp"`
 	}{}
 
 	if err := c.Bind(&rtsp); !errors.Is(err, nil) {
@@ -56,12 +57,33 @@ func player(c *gin.Context) {
 		return
 	}
 
-	uuid := Config.PushStream(rtsp.Rtsp)
+	uRtsp := Config.PushStream(rtsp.Rtsp, "rtsp")
+	uRtmp := Config.PushStream(rtsp.Rtmp, "rtmp")
 
-	c.JSON(http.StatusOK, gin.H{
-		"ws":   "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uuid,
-		"http": "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uuid,
-	})
+	if len(uRtsp) > 0 && len(uRtmp) > 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"ws":        "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uRtsp,
+			"http":      "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uRtsp,
+			"ws-rtmp":   "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uRtmp,
+			"http-rtmp": "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uRtmp,
+		})
+		return
+	}
+
+	if len(uRtsp) > 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"ws":   "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uRtsp,
+			"http": "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uRtsp,
+		})
+	}
+
+	if len(uRtmp) > 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"ws-rtmp":   "ws://127.0.0.1" + Config.Server.HTTPPort + "/online?uuid=" + uRtmp,
+			"http-rtmp": "http://127.0.0.1" + Config.Server.HTTPPort + "/online-http?uuid=" + uRtmp,
+		})
+	}
+
 }
 func remove(c *gin.Context) {
 	var rtsp = struct {
@@ -251,7 +273,6 @@ func httpArchive(c *gin.Context) {
 func online(ws *websocket.Conn) {
 	defer ws.Close()
 	ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
-
 	suuid := ws.Request().FormValue("uuid")
 
 	if suuid == "" {
@@ -259,23 +280,27 @@ func online(ws *websocket.Conn) {
 		return
 	}
 	if !Config.ext(suuid) {
+		Logger.Error(fmt.Sprintf("Stream %s not exists", suuid))
 		ws.Close()
 		return
 	}
 	Config.Run(suuid)
+	//if !Config.Streams[suuid].Run {
+	//	Logger.Error(fmt.Sprintf("Stream %s not run", suuid))
+	//	ws.Close()
+	//	return
+	//}
 	ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	cuuid, packet, status := Config.clAd(suuid)
-
 	defer Config.clDe(suuid, cuuid)
 
 	codecs := Config.coGe(suuid)
-
 	muxer := mp4f.NewMuxer(nil)
 	err := InitMuxer(muxer, codecs, ws)
 	if err != nil {
+		Logger.Error(err.Error())
 		return
 	}
-
 	Logger.Info("Client connect to stream " + suuid)
 	PlayStreamRTSP(ws, status, packet, muxer)
 	Logger.Info("Client disconnect to stream " + suuid)

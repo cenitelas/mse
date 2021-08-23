@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/net/websocket"
@@ -10,7 +11,9 @@ import (
 	"mse/codec/h264parser"
 	"mse/codec/h265parser"
 	"mse/format/mp4f"
+	"mse/format/rtmp"
 	"mse/format/rtsp"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -19,11 +22,13 @@ import (
 type Stream struct {
 	Uuid           string
 	URL            string
+	Type           string
 	RunLock        bool
 	Codecs         []av.CodecData
 	Cl             map[string]viewer
 	Status         chan string
 	ReconnectCount int
+	Run            bool
 }
 
 type Video struct {
@@ -42,6 +47,7 @@ func RTSPWorker(stream *Stream) {
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
 		Config.RunUnlock(stream.Uuid)
+		stream.Run = false
 		return
 	}
 	defer inRtsp.Close()
@@ -52,6 +58,7 @@ func RTSPWorker(stream *Stream) {
 		inRtsp.Close()
 		Logger.Error(fmt.Sprintf("Offline :%s", stream.URL))
 		Config.RunUnlock(stream.Uuid)
+		stream.Run = false
 		return
 	}
 
@@ -73,6 +80,7 @@ func RTSPWorker(stream *Stream) {
 	}
 	stream.Codecs = []av.CodecData{codec}
 	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
+	stream.Run = true
 	for {
 		select {
 		case status := <-stream.Status:
@@ -82,12 +90,14 @@ func RTSPWorker(stream *Stream) {
 					stream.ReconnectCount = 0
 					inRtsp.Close()
 					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
+					stream.Status = make(chan string)
 					Config.RunUnlock(stream.Uuid)
 					return
 				}
 				time.Sleep(3 * time.Second)
 				inRtsp.Close()
 				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+				stream.Status = make(chan string)
 				go RTSPWorker(stream)
 				return
 			case "close":
@@ -97,6 +107,9 @@ func RTSPWorker(stream *Stream) {
 				return
 			}
 		default:
+			if !stream.RunLock {
+				return
+			}
 			var pck av.Packet
 
 			if pck, err = inRtsp.ReadPacket(); err != nil {
@@ -104,6 +117,91 @@ func RTSPWorker(stream *Stream) {
 				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
 				time.Sleep(3 * time.Second)
 				go RTSPWorker(stream)
+				return
+			}
+			if codecs[pck.Idx].Type().IsAudio() {
+				continue
+			}
+			stream.ReconnectCount = 0
+			Config.cast(stream.Uuid, pck)
+		}
+	}
+}
+
+func RTMPWorker(stream *Stream) {
+	inRtsp, err := rtmp.Dial(stream.URL)
+	if err != nil {
+		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
+		Config.RunUnlock(stream.Uuid)
+		stream.Run = false
+		return
+	}
+	defer inRtsp.Close()
+
+	stream.ReconnectCount++
+	if stream.ReconnectCount > 10 {
+		stream.ReconnectCount = 0
+		inRtsp.Close()
+		Logger.Error(fmt.Sprintf("Offline :%s", stream.URL))
+		Config.RunUnlock(stream.Uuid)
+		stream.Run = false
+		return
+	}
+	codecs, err := inRtsp.Streams()
+
+	if err != nil {
+		Logger.Error(err.Error())
+	}
+	//var codec av.CodecData
+	//if len(codecs) > 0 {
+	//
+	//		codec = codecs[1]
+	//
+	//} else {
+	//	Logger.Error("Codec error: len = 0")
+	//	time.Sleep(3 * time.Second)
+	//	inRtsp.Close()
+	//	Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+	//	go RTMPWorker(stream)
+	//	return
+	//}
+	stream.Codecs = codecs
+	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
+	stream.Run = true
+	for {
+		select {
+		case status := <-stream.Status:
+			switch status {
+			case "reconnect":
+				if stream.ReconnectCount > 10 {
+					stream.ReconnectCount = 0
+					inRtsp.Close()
+					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
+					stream.Status = make(chan string)
+					Config.RunUnlock(stream.Uuid)
+					return
+				}
+				time.Sleep(3 * time.Second)
+				inRtsp.Close()
+				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+				go RTMPWorker(stream)
+				return
+			case "close":
+				inRtsp.Close()
+				Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
+				Config.RunUnlock(stream.Uuid)
+				return
+			}
+		default:
+			var pck av.Packet
+			if !stream.Run {
+				return
+			}
+			if pck, err = inRtsp.ReadPacket(); err != nil {
+				inRtsp.Close()
+				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+				time.Sleep(3 * time.Second)
+				go RTMPWorker(stream)
 				return
 			}
 			if codecs[pck.Idx].Type().IsAudio() {
@@ -231,6 +329,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 }
 
 func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer) {
+	suuid := ws.Request().FormValue("uuid")
 	statusSocket := make(chan bool)
 	go func() {
 		for {
@@ -294,6 +393,9 @@ func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av
 				}
 			}
 		case <-interval.C:
+			if _, ok := Config.Streams[suuid]; !ok {
+				return
+			}
 			reconnectFun()
 
 		case <-statusSocket:
@@ -361,7 +463,14 @@ func PlayStreamArchiveHttp(packet chan av.Packet, statusSocket chan bool, c *gin
 }
 
 func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer) {
-	statusSocket := make(chan bool)
+	var data = struct {
+		Suuid string `form:"uuid" binding:"required"`
+	}{}
+
+	if err := c.Bind(&data); !errors.Is(err, nil) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	interval := time.NewTimer(10 * time.Second)
 	reconnectFun := func() {
 		interval.Reset(10 * time.Second)
@@ -405,10 +514,10 @@ func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av
 				c.Writer.Write(buf)
 			}
 		case <-interval.C:
+			if _, ok := Config.Streams[data.Suuid]; !ok {
+				return
+			}
 			reconnectFun()
-
-		case <-statusSocket:
-			return
 		}
 	}
 }
@@ -421,6 +530,10 @@ func InitMuxer(muxer *mp4f.Muxer, codec []av.CodecData, ws *websocket.Conn) erro
 		Logger.Error(fmt.Sprintf("Muxer: %s", err.Error()))
 		return err
 	}
+	if len(codec) <= 0 {
+		return errors.New("codec or connect error")
+	}
+
 	meta, init := muxer.GetInit(0)
 
 	err = websocket.Message.Send(ws, append([]byte{9}, meta...))
@@ -444,6 +557,11 @@ func InitMuxerHttp(muxer *mp4f.Muxer, codec []av.CodecData, c *gin.Context) erro
 		Logger.Error(fmt.Sprintf("Muxer: %s", err.Error()))
 		return err
 	}
+
+	if len(codec) <= 0 {
+		return errors.New("codec or connect error")
+	}
+
 	_, init := muxer.GetInit(0)
 
 	c.Writer.Write(init)

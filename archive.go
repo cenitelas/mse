@@ -99,6 +99,7 @@ func files(p []string, start time.Time, end time.Time, fileStart string, checkDu
 		fs, err := ioutil.ReadDir(pz)
 		if err != nil {
 			log.Println(err)
+			log.Println("READ DIR")
 			return []string{}, 0, 0
 		}
 

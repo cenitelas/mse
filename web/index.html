@@ -20,7 +20,7 @@
             video.muted = true
             document.body.appendChild(video)
 
-            let player = new Mse("ws://127.0.0.1:4090/ws-archive?path=/home/fivern/media/&start=2021-02-17 17:54:16&file_start=2021-02-17T17-54-16.flv&speed=8", video, true, {
+            let player = new Mse("ws://127.0.0.1:4090/online?uuid=c4091a95-c0e4-49ba-a92b-eee60bab8ec1", video, true, {
                 afterStart: () => {
                     console.log("ASDASD")
                 }
