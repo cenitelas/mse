@@ -7,7 +7,6 @@
 #include <string.h>
 #include <libswscale/swscale.h>
 
-
 typedef struct {
 	AVCodec *codec;
 	AVCodecContext *codecCtx;

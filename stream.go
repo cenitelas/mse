@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/net/websocket"
+	"github.com/gorilla/websocket"
 	"log"
 	"mse/av"
 	"mse/av/avutil"
@@ -20,15 +20,13 @@ import (
 )
 
 type Stream struct {
-	Uuid           string
-	URL            string
-	Type           string
-	RunLock        bool
-	Codecs         []av.CodecData
-	Cl             map[string]viewer
-	Status         chan string
-	ReconnectCount int
-	Run            bool
+	Uuid         string
+	URL          string
+	Type         string
+	RunLock      bool
+	Codecs       []av.CodecData
+	Cl           map[string]viewer
+	CountConnect int
 }
 
 type Video struct {
@@ -43,27 +41,17 @@ type viewer struct {
 }
 
 func RTSPWorker(stream *Stream) {
+	rtsp.DebugRtsp = true
 	inRtsp, err := rtsp.Dial(stream.URL)
+	inRtsp.RtspTimeout = time.Duration(time.Second * 20)
+	inRtsp.RtpKeepAliveTimeout = time.Duration(time.Second * 20)
+	defer inRtsp.Close()
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
 		Config.RunUnlock(stream.Uuid)
-		stream.Run = false
 		return
 	}
-	defer inRtsp.Close()
-
-	stream.ReconnectCount++
-	if stream.ReconnectCount > 10 {
-		stream.ReconnectCount = 0
-		inRtsp.Close()
-		Logger.Error(fmt.Sprintf("Offline :%s", stream.URL))
-		Config.RunUnlock(stream.Uuid)
-		stream.Run = false
-		return
-	}
-
 	codecs, err := inRtsp.Streams()
-
 	if err != nil {
 		Logger.Error(err.Error())
 	}
@@ -72,152 +60,89 @@ func RTSPWorker(stream *Stream) {
 		codec = codecs[0]
 	} else {
 		Logger.Error("Codec error: len = 0")
-		time.Sleep(3 * time.Second)
 		inRtsp.Close()
-		Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-		go RTSPWorker(stream)
+		Config.RunUnlock(stream.Uuid)
 		return
 	}
 	stream.Codecs = []av.CodecData{codec}
 	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
-	stream.Run = true
 	for {
-		select {
-		case status := <-stream.Status:
-			switch status {
-			case "reconnect":
-				if stream.ReconnectCount > 10 {
-					stream.ReconnectCount = 0
-					inRtsp.Close()
-					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
-					stream.Status = make(chan string)
-					Config.RunUnlock(stream.Uuid)
-					return
-				}
-				time.Sleep(3 * time.Second)
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-				stream.Status = make(chan string)
-				go RTSPWorker(stream)
-				return
-			case "close":
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
-				Config.RunUnlock(stream.Uuid)
-				return
-			}
-		default:
-			if !stream.RunLock {
-				return
-			}
-			var pck av.Packet
-
-			if pck, err = inRtsp.ReadPacket(); err != nil {
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-				time.Sleep(3 * time.Second)
-				go RTSPWorker(stream)
-				return
-			}
-			if codecs[pck.Idx].Type().IsAudio() {
-				continue
-			}
-			stream.ReconnectCount = 0
-			Config.cast(stream.Uuid, pck)
+		if !stream.RunLock {
+			inRtsp.Close()
+			return
 		}
+
+		if Config.connectGet(stream.Uuid) == 0 {
+			inRtsp.Close()
+			Config.RunUnlock(stream.Uuid)
+			Logger.Info("Connect clients is 0")
+			return
+		}
+
+		var pck av.Packet
+
+		if pck, err = inRtsp.ReadPacket(); err != nil {
+			inRtsp.Close()
+			Logger.Error(err.Error())
+			Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+			time.Sleep(3 * time.Second)
+			go RTSPWorker(stream)
+			return
+		}
+		if codecs[pck.Idx].Type().IsAudio() {
+			continue
+		}
+		Config.cast(stream.Uuid, pck)
 	}
 }
 
 func RTMPWorker(stream *Stream) {
-	inRtsp, err := rtmp.Dial(stream.URL)
+	inRtsp, err := rtmp.DialTimeout(stream.URL, time.Duration(time.Second*20))
+	defer inRtsp.Close()
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
 		Config.RunUnlock(stream.Uuid)
-		stream.Run = false
 		return
 	}
-	defer inRtsp.Close()
 
-	stream.ReconnectCount++
-	if stream.ReconnectCount > 10 {
-		stream.ReconnectCount = 0
-		inRtsp.Close()
-		Logger.Error(fmt.Sprintf("Offline :%s", stream.URL))
-		Config.RunUnlock(stream.Uuid)
-		stream.Run = false
-		return
-	}
 	codecs, err := inRtsp.Streams()
 
 	if err != nil {
 		Logger.Error(err.Error())
 	}
-	//var codec av.CodecData
-	//if len(codecs) > 0 {
-	//
-	//		codec = codecs[1]
-	//
-	//} else {
-	//	Logger.Error("Codec error: len = 0")
-	//	time.Sleep(3 * time.Second)
-	//	inRtsp.Close()
-	//	Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-	//	go RTMPWorker(stream)
-	//	return
-	//}
 	stream.Codecs = codecs
 	Logger.Success(fmt.Sprintf("Connect :%s", stream.URL))
-	stream.Run = true
 	for {
-		select {
-		case status := <-stream.Status:
-			switch status {
-			case "reconnect":
-				if stream.ReconnectCount > 10 {
-					stream.ReconnectCount = 0
-					inRtsp.Close()
-					Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
-					stream.Status = make(chan string)
-					Config.RunUnlock(stream.Uuid)
-					return
-				}
-				time.Sleep(3 * time.Second)
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-				go RTMPWorker(stream)
-				return
-			case "close":
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Close :%s", stream.URL))
-				Config.RunUnlock(stream.Uuid)
-				return
-			}
-		default:
-			var pck av.Packet
-			if !stream.Run {
-				return
-			}
-			if pck, err = inRtsp.ReadPacket(); err != nil {
-				inRtsp.Close()
-				Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
-				time.Sleep(3 * time.Second)
-				go RTMPWorker(stream)
-				return
-			}
-			if codecs[pck.Idx].Type().IsAudio() {
-				continue
-			}
-			stream.ReconnectCount = 0
-			Config.cast(stream.Uuid, pck)
+		var pck av.Packet
+		if !stream.RunLock {
+			return
 		}
+
+		if Config.connectGet(stream.Uuid) == 0 {
+			inRtsp.Close()
+			Config.RunUnlock(stream.Uuid)
+			Logger.Info("Connect clients is 0")
+			return
+		}
+
+		if pck, err = inRtsp.ReadPacket(); err != nil {
+			inRtsp.Close()
+			Logger.Info(fmt.Sprintf("Reconnect :%s", stream.URL))
+			time.Sleep(3 * time.Second)
+			go RTMPWorker(stream)
+			return
+		}
+		if codecs[pck.Idx].Type().IsAudio() {
+			continue
+		}
+		Config.cast(stream.Uuid, pck)
 	}
 }
 
 func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string, timeStart time.Time, codecControl chan []av.CodecData, fileStart string, speed int) {
 	pathFiles := filesStream(paths, timeStart, fileStart)
 	Logger.Success(fmt.Sprintf("Start stream %s in files:", timeStart.String()))
-	files := make(map[string]Video)
-	for _, pathFile := range pathFiles {
+	next := func(pathFile string) *Video {
 		in, _ := avutil.Open(pathFile)
 		st, _ := in.Streams()
 		_, fileName := path.Split(pathFile)
@@ -227,8 +152,10 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 			Codecs:    st,
 			StartTime: startTime,
 		}
-		files[pathFile] = v
+		return &v
 	}
+	channel := next(pathFiles[0])
+	defer channel.Data.Close()
 	keyframe := false
 	var timeStream time.Duration
 	var err error
@@ -239,6 +166,7 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 		Data:   infile,
 		Codecs: codecs,
 	}
+	defer loaded.Data.Close()
 	loader := false
 	count := 0
 	totalCodec := loaded.Codecs
@@ -247,14 +175,15 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 		select {
 		case <-socketStatus:
 			loaded.Data.Close()
-			for _, pathFile := range pathFiles {
-				files[pathFile].Data.Close()
-			}
+			channel.Data.Close()
+			pathFiles = nil
+			paths = nil
+			channel = nil
 			Logger.Info(fmt.Sprintf("Close stream archive"))
 			return
 		default:
 			var pck av.Packet
-			if count > len(pathFiles)-1 || (count < len(pathFiles) && timeStart.Add(5*time.Second).Before(files[pathFiles[count]].StartTime)) {
+			if count > len(pathFiles)-1 || (count < len(pathFiles) && timeStart.Add(5*time.Second).Before(channel.StartTime)) {
 				if loader == false {
 					loader = true
 				}
@@ -281,21 +210,22 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 					loader = false
 
 				}
-				if Meta(totalCodec[0]) != Meta(files[pathFiles[count]].Codecs[0]) {
-					codecControl <- files[pathFiles[count]].Codecs
-					totalCodec = files[pathFiles[count]].Codecs
+				if Meta(totalCodec[0]) != Meta(channel.Codecs[0]) {
+					codecControl <- channel.Codecs
+					totalCodec = channel.Codecs
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
-				if pck, err = files[pathFiles[count]].Data.ReadPacket(); err != nil {
-					files[pathFiles[count]].Data.Close()
+				if pck, err = channel.Data.ReadPacket(); err != nil {
+					channel.Data.Close()
 					prev.Time = 0
 					count += 1
+					channel = next(pathFiles[count])
 					continue
 				}
 			}
 
-			if count < len(pathFiles) && timeStart.After(files[pathFiles[count]].StartTime.Add(pck.Time+(5*time.Second))) {
+			if count < len(pathFiles) && timeStart.After(channel.StartTime.Add(pck.Time+(5*time.Second))) {
 				continue
 			}
 
@@ -326,26 +256,22 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 		}
 	}
 	loaded.Data.Close()
+	channel.Data.Close()
 }
 
-func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer) {
-	suuid := ws.Request().FormValue("uuid")
+func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, muxer *mp4f.Muxer) {
 	statusSocket := make(chan bool)
 	go func() {
 		for {
-			var message string
-			err := websocket.Message.Receive(ws, &message)
+			_, _, err := ws.ReadMessage()
 			if err != nil {
 				statusSocket <- false
 				ws.Close()
+				return
 			}
 		}
 	}()
-	interval := time.NewTimer(10 * time.Second)
-	reconnectFun := func() {
-		interval.Reset(10 * time.Second)
-		workerStatus <- "reconnect"
-	}
+	interval := time.NewTimer(30 * time.Second)
 
 	timeStream := time.Duration(0)
 	var prev av.Packet
@@ -377,18 +303,19 @@ func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av
 
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {
-				log.Println(err)
+				Logger.Error(err.Error())
+				return
 			}
 			if ready {
-				interval.Reset(10 * time.Second)
+				interval.Reset(30 * time.Second)
 				err := ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
 				if err != nil {
-					log.Println(err)
+					Logger.Error(err.Error())
 					return
 				}
-				err = websocket.Message.Send(ws, buf)
+				err = ws.WriteMessage(websocket.BinaryMessage, buf)
 				if err != nil {
-					log.Println(err)
+					Logger.Error(err.Error())
 					return
 				}
 			}
@@ -396,7 +323,6 @@ func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av
 			if _, ok := Config.Streams[suuid]; !ok {
 				return
 			}
-			reconnectFun()
 
 		case <-statusSocket:
 			return
@@ -407,8 +333,7 @@ func PlayStreamRTSP(ws *websocket.Conn, workerStatus chan string, packet chan av
 func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websocket.Conn, muxer *mp4f.Muxer, codecControl chan []av.CodecData) {
 	go func() {
 		for {
-			var message string
-			err := websocket.Message.Receive(ws, &message)
+			_, _, err := ws.ReadMessage()
 			if err != nil {
 				statusSocket <- false
 				ws.Close()
@@ -431,7 +356,7 @@ func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websoc
 					log.Println(err)
 					return
 				}
-				err = websocket.Message.Send(ws, buf)
+				err = ws.WriteMessage(websocket.BinaryMessage, buf)
 				if err != nil {
 					log.Println(err)
 					return
@@ -447,7 +372,10 @@ func PlayStreamArchiveHttp(packet chan av.Packet, statusSocket chan bool, c *gin
 	for {
 		select {
 		case codec := <-codecControl:
-			InitMuxerHttp(muxer, codec, c)
+			err := InitMuxerHttp(muxer, codec, c)
+			if err != nil {
+				log.Println(err)
+			}
 		case pck := <-packet:
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {
@@ -462,7 +390,7 @@ func PlayStreamArchiveHttp(packet chan av.Packet, statusSocket chan bool, c *gin
 	}
 }
 
-func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av.Packet, muxer *mp4f.Muxer) {
+func PlayStreamRTSPHTTP(c *gin.Context, packet chan av.Packet, muxer *mp4f.Muxer) {
 	var data = struct {
 		Suuid string `form:"uuid" binding:"required"`
 	}{}
@@ -471,11 +399,7 @@ func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	interval := time.NewTimer(10 * time.Second)
-	reconnectFun := func() {
-		interval.Reset(10 * time.Second)
-		workerStatus <- "reconnect"
-	}
+	interval := time.NewTimer(30 * time.Second)
 
 	timeStream := time.Duration(0)
 	var prev av.Packet
@@ -507,17 +431,17 @@ func PlayStreamRTSPHTTP(c *gin.Context, workerStatus chan string, packet chan av
 
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {
-				log.Println(err)
+				Logger.Error(err.Error())
+				return
 			}
 			if ready {
-				interval.Reset(10 * time.Second)
+				interval.Reset(30 * time.Second)
 				c.Writer.Write(buf)
 			}
 		case <-interval.C:
 			if _, ok := Config.Streams[data.Suuid]; !ok {
 				return
 			}
-			reconnectFun()
 		}
 	}
 }
@@ -536,12 +460,12 @@ func InitMuxer(muxer *mp4f.Muxer, codec []av.CodecData, ws *websocket.Conn) erro
 
 	meta, init := muxer.GetInit(0)
 
-	err = websocket.Message.Send(ws, append([]byte{9}, meta...))
+	err = ws.WriteMessage(websocket.BinaryMessage, append([]byte{9}, meta...))
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Websocket: %s", err.Error()))
 		return err
 	}
-	err = websocket.Message.Send(ws, init)
+	err = ws.WriteMessage(websocket.BinaryMessage, init)
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Websocket: %s", err.Error()))
 		return err

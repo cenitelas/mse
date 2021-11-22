@@ -3,8 +3,9 @@ package tsio
 import (
 	"fmt"
 	"io"
-	"mse/utils/bits/pio"
 	"time"
+
+	"mse/utils/bits/pio"
 )
 
 const (
@@ -616,15 +617,6 @@ func (self *TSWriter) WritePackets(w io.Writer, datav [][]byte, pcr time.Duratio
 		self.tshdr[3] = byte(self.ContinuityCounter)&0xf | 0x30
 		self.tshdr[5] = 0 // flags
 		hdrlen := 6
-		//pid := uint16((self.tshdr[1]&0x1f))<<8 | uint16(self.tshdr[2])
-		//if pid != 256 {
-		//self.tshdr[3] = 0x01
-
-		//self.tshdr[3] = 0x47
-		//self.tshdr[4]
-		//	log.Println(self.tshdr[:5])
-		//	log.Println("pid", pid,self.tshdr[3] )
-		//}
 		self.ContinuityCounter++
 
 		if writepos == 0 {

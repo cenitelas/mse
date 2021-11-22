@@ -4,7 +4,7 @@ package ffmpeg
 #cgo LDFLAGS: -lavformat -lavutil -lavcodec -lavresample -lswscale
 #include "ffmpeg.h"
 void ffinit() {
-	avformat_network_init();
+	av_register_all();
 }
 */
 import "C"

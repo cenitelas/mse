@@ -48,13 +48,11 @@ func (element *ConfigST) PushStream(url string, t string) string {
 	}
 
 	stream := Stream{
-		Uuid:           uuid2.New().String(),
-		URL:            url,
-		Type:           t,
-		Cl:             make(map[string]viewer),
-		Status:         make(chan string),
-		ReconnectCount: 0,
-		Run:            false,
+		Uuid:         uuid2.New().String(),
+		URL:          url,
+		Type:         t,
+		Cl:           make(map[string]viewer),
+		CountConnect: 0,
 	}
 	element.Streams[stream.Uuid] = &stream
 	Logger.Info("Push :" + url)
@@ -68,12 +66,11 @@ func (element *ConfigST) RemoveStream(url string) bool {
 		return false
 	}
 	tmp, ok := element.Streams[exists.Uuid]
-	if ok && tmp.Run {
+	if ok && tmp.RunLock {
 		Config.RunUnlock(exists.Uuid)
-		tmp.Status <- "close"
+		Config.connectDecrease(exists.Uuid)
 		element.Streams[exists.Uuid] = tmp
 	}
-	close(element.Streams[exists.Uuid].Status)
 	delete(element.Streams, exists.Uuid)
 	Logger.Info("Remove rtsp :" + url)
 	return true
@@ -108,6 +105,33 @@ func (element *ConfigST) RunUnlock(uuid string) {
 			element.Streams[uuid] = tmp
 		}
 	}
+}
+
+func (element *ConfigST) connectIncrease(uuid string) {
+	element.mutex.Lock()
+	defer element.mutex.Unlock()
+	if tmp, ok := element.Streams[uuid]; ok {
+		tmp.CountConnect = tmp.CountConnect + 1
+		element.Streams[uuid] = tmp
+	}
+}
+
+func (element *ConfigST) connectDecrease(uuid string) {
+	element.mutex.Lock()
+	defer element.mutex.Unlock()
+	if tmp, ok := element.Streams[uuid]; ok {
+		tmp.CountConnect = tmp.CountConnect - 1
+		element.Streams[uuid] = tmp
+	}
+}
+
+func (element *ConfigST) connectGet(uuid string) int {
+	element.mutex.RLock()
+	defer element.mutex.RUnlock()
+	if tmp, ok := element.Streams[uuid]; ok {
+		return tmp.CountConnect
+	}
+	return 0
 }
 
 func (element *ConfigST) HasViewer(uuid string) bool {
@@ -161,13 +185,13 @@ func (element *ConfigST) coGe(suuid string) []av.CodecData {
 	return nil
 }
 
-func (element *ConfigST) clAd(uuid string) (string, chan av.Packet, chan string) {
+func (element *ConfigST) clAd(uuid string) (string, chan av.Packet) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
 	cuuid := pseudoUUID()
 	ch := make(chan av.Packet, 100)
 	element.Streams[uuid].Cl[cuuid] = viewer{c: ch}
-	return cuuid, ch, element.Streams[uuid].Status
+	return cuuid, ch
 }
 
 func (element *ConfigST) list() (string, []string) {

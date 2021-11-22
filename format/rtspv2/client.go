@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -85,6 +86,8 @@ type RTSPClient struct {
 	PreAudioTS          int64
 	PreVideoTS          int64
 	PreSequenceNumber   int
+	FPS                 int
+	WaitCodec           bool
 }
 
 type RTSPClientOptions struct {
@@ -123,6 +126,14 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	if client.pURL.Scheme == "rtsps" {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: client.pURL.Hostname()})
+		err = tlsConn.Handshake()
+		if err != nil {
+			return nil, err
+		}
+		conn = tlsConn
+	}
 	client.conn = conn
 	client.connRW = bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 	err = client.request(OPTIONS, nil, client.pURL.String(), false, false)
@@ -152,7 +163,9 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 					}
 				} else {
 					client.CodecData = append(client.CodecData, h264parser.CodecData{})
+					client.WaitCodec = true
 				}
+				client.FPS = i2.FPS
 				client.videoCodec = av.H264
 			} else if i2.Type == av.H265 {
 				if len(i2.SpropVPS) > 1 && len(i2.SpropSPS) > 1 && len(i2.SpropPPS) > 1 {
@@ -166,6 +179,10 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 					client.CodecData = append(client.CodecData, h265parser.CodecData{})
 				}
 				client.videoCodec = av.H265
+				//} else if i2.Type == av.JPEG {
+				//	client.CodecData = append(client.CodecData, h264parser.CodecData{})
+				//	client.WaitCodec = true
+				//	client.videoCodec = av.H264
 			} else {
 				client.Println("SDP Video Codec Type Not Supported", i2.Type)
 			}
@@ -212,7 +229,7 @@ func Dial(options RTSPClientOptions) (*RTSPClient, error) {
 		}
 		ch += 2
 	}
-
+	//test := map[string]string{"Scale": "1.000000", "Speed": "1.000000", "Range": "clock=20210929T210000Z-20210929T211000Z"}
 	err = client.request(PLAY, nil, client.control, false, false)
 	if err != nil {
 		return nil, err
@@ -477,7 +494,7 @@ func (client *RTSPClient) parseURL(rawURL string) error {
 	if l.Port() == "" {
 		l.Host = fmt.Sprintf("%s:%s", l.Host, "554")
 	}
-	if l.Scheme != "rtsp" {
+	if l.Scheme != "rtsp" && l.Scheme != "rtsps" {
 		l.Scheme = "rtsp"
 	}
 	client.pURL = l
@@ -555,6 +572,9 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 			client.BufferRtpPacket.Reset()
 		}
 		nalRaw, _ := h264parser.SplitNALUs(content[offset:end])
+		if len(nalRaw) == 0 || len(nalRaw[0]) == 0 {
+			return nil, false
+		}
 		var retmap []*av.Packet
 		for _, nal := range nalRaw {
 			if client.videoCodec == av.H265 {
@@ -600,7 +620,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						client.BufferRtpPacket.Write(nal[3:])
 					}
 				default:
-					client.Println("Unsupported Nal", naluType)
+					//client.Println("Unsupported Nal", naluType)
 				}
 
 			} else if client.videoCodec == av.H264 {
@@ -620,7 +640,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 				case naluType == 8:
 					client.CodecUpdatePPS(nal)
 				case naluType == 24:
-					client.Println("24 Type need add next version report https://vdk")
+					client.Println("24 Type need add next version report https://github.com/deepch/vdk")
 				case naluType == 28:
 					fuIndicator := content[offset]
 					fuHeader := content[offset+1]
@@ -637,7 +657,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						if isEnd {
 							client.fuStarted = false
 							naluTypef := client.BufferRtpPacket.Bytes()[0] & 0x1f
-							if naluTypef == 7 {
+							if naluTypef == 7 || naluTypef == 9 {
 								bufered, _ := h264parser.SplitNALUs(append([]byte{0, 0, 0, 1}, client.BufferRtpPacket.Bytes()...))
 								for _, v := range bufered {
 									naluTypefs := v[0] & 0x1f
@@ -664,7 +684,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 						}
 					}
 				default:
-					client.Println("Unsupported NAL Type", naluType)
+					//client.Println("Unsupported NAL Type", naluType)
 				}
 			}
 		}
@@ -729,7 +749,7 @@ func (client *RTSPClient) RTPDemuxer(payloadRAW *[]byte) ([]*av.Packet, bool) {
 					if _, _, _, _, err := aacparser.ParseADTSHeader(frame); err == nil {
 						frame = frame[7:]
 					}
-					duration = time.Duration((float32(1024)/float32(client.AudioTimeScale))*1000) * time.Millisecond
+					duration = time.Duration((float32(1024)/float32(client.AudioTimeScale))*1000*1000*1000) * time.Nanosecond
 					client.AudioTimeLine += duration
 					retmap = append(retmap, &av.Packet{
 						Data:            frame,
@@ -866,6 +886,8 @@ func (client *RTSPClient) Println(v ...interface{}) {
 		log.Println(v)
 	}
 }
+
+//binSize
 func binSize(val int) []byte {
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, uint32(val))

@@ -6,7 +6,9 @@ import (
 	"mse/av"
 	"mse/av/avutil"
 	"mse/cgo/ffmpeg"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -30,8 +32,7 @@ func duration(path string) time.Duration {
 }
 
 func send(p chan av.Packet, paths []string, close chan bool, start time.Time, end time.Time) {
-	files := make(map[string]Video)
-	for _, pathFile := range paths {
+	next := func(pathFile string) *Video {
 		in, _ := avutil.Open(pathFile)
 		st, _ := in.Streams()
 		_, fileName := path.Split(pathFile)
@@ -41,9 +42,10 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 			Codecs:    st,
 			StartTime: startTime,
 		}
-		files[pathFile] = v
+		return &v
 	}
-
+	channel := next(paths[0])
+	defer channel.Data.Close()
 	keyframe := false
 	count := 0
 	var err error
@@ -53,21 +55,23 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 	for {
 		var pck av.Packet
 
-		if pck, err = files[paths[count]].Data.ReadPacket(); err != nil {
+		if pck, err = channel.Data.ReadPacket(); err != nil {
 			totalTime = last.Time
+			channel.Data.Close()
 			if count < len(paths)-1 {
-				count += 1
+				count = count + 1
+				channel = next(paths[count])
 				continue
 			} else {
 				break
 			}
 		}
 
-		if start.After(files[paths[count]].StartTime.Add(pck.Time)) {
+		if start.After(channel.StartTime.Add(pck.Time)) {
 			continue
 		}
 
-		if files[paths[count]].StartTime.Add(pck.Time).After(end) {
+		if channel.StartTime.Add(pck.Time).After(end) {
 			continue
 		}
 
@@ -83,10 +87,9 @@ func send(p chan av.Packet, paths []string, close chan bool, start time.Time, en
 		last = pck
 	}
 
-	for _, pathFile := range paths {
-		files[pathFile].Data.Close()
-	}
-
+	channel.Data.Close()
+	paths = nil
+	channel = nil
 	close <- true
 }
 
@@ -99,10 +102,8 @@ func files(p []string, start time.Time, end time.Time, fileStart string, checkDu
 		fs, err := ioutil.ReadDir(pz)
 		if err != nil {
 			log.Println(err)
-			log.Println("READ DIR")
-			return []string{}, 0, 0
+			continue
 		}
-
 		for i, file := range fs {
 			if !file.IsDir() {
 				if file.Size() < (1024 * 500) {
@@ -159,33 +160,31 @@ func files(p []string, start time.Time, end time.Time, fileStart string, checkDu
 func filesStream(p []string, start time.Time, fileStart string) []string {
 	var paths []string
 	for _, pz := range p {
-		fs, err := ioutil.ReadDir(pz)
-		if err != nil {
-			log.Println(err)
-			return []string{}
-		}
-
-		for _, file := range fs {
-			if !file.IsDir() {
-				if file.Size() < (1024 * 500) {
-					continue
+		err := filepath.Walk(pz, func(path string, info os.FileInfo, err error) error {
+			if !info.IsDir() {
+				if info.Size() < (1024 * 500) {
+					return nil
 				}
-				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(file.Name(), ".flv", ""))
+				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(info.Name(), ".flv", ""))
 				if err != nil {
-					continue
+					return nil
 				}
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
-					if file.Name() == fileStart {
-						paths = append(paths, path.Join(pz, file.Name()))
+					if info.Name() == fileStart {
+						paths = append(paths, path)
 					}
-					continue
+					return nil
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
-					paths = append(paths, path.Join(pz, file.Name()))
+					paths = append(paths, path)
 				}
 			}
+			return nil
+		})
+		if err != nil {
+			continue
 		}
 	}
 	sortPath(paths)
