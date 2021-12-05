@@ -41,7 +41,7 @@ type viewer struct {
 }
 
 func RTSPWorker(stream *Stream) {
-	rtsp.DebugRtsp = true
+	rtsp.DebugRtsp = false
 	inRtsp, err := rtsp.Dial(stream.URL)
 	inRtsp.RtspTimeout = time.Duration(time.Second * 20)
 	inRtsp.RtpKeepAliveTimeout = time.Duration(time.Second * 20)
@@ -273,8 +273,8 @@ func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, mux
 	}()
 	interval := time.NewTimer(30 * time.Second)
 
-	timeStream := time.Duration(0)
-	var prev av.Packet
+	//timeStream := time.Duration(0)
+	//var prev av.Packet
 	keyframe := false
 
 	for {
@@ -289,17 +289,17 @@ func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, mux
 				continue
 			}
 
-			if (pck.Time - prev.Time) < 0 {
-				prev = pck
-			}
-
-			if prev.Time == 0 {
-				prev = pck
-			}
-
-			timeStream += pck.Time - prev.Time
-			prev = pck
-			pck.Time = timeStream
+			//if (pck.Time - prev.Time) < 0 {
+			//	prev = pck
+			//}
+			//
+			//if prev.Time == 0 {
+			//	prev = pck
+			//}
+			//
+			//timeStream += pck.Time - prev.Time
+			//prev = pck
+			//pck.Time = timeStream
 
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {
@@ -401,8 +401,8 @@ func PlayStreamRTSPHTTP(c *gin.Context, packet chan av.Packet, muxer *mp4f.Muxer
 	}
 	interval := time.NewTimer(30 * time.Second)
 
-	timeStream := time.Duration(0)
-	var prev av.Packet
+	//timeStream := time.Duration(0)
+	//var prev av.Packet
 	keyframe := false
 
 	for {
@@ -417,17 +417,17 @@ func PlayStreamRTSPHTTP(c *gin.Context, packet chan av.Packet, muxer *mp4f.Muxer
 				continue
 			}
 
-			if (pck.Time - prev.Time) < 0 {
-				prev = pck
-			}
-
-			if prev.Time == 0 {
-				prev = pck
-			}
-
-			timeStream += pck.Time - prev.Time
-			prev = pck
-			pck.Time = timeStream
+			//if (pck.Time - prev.Time) < 0 {
+			//	prev = pck
+			//}
+			//
+			//if prev.Time == 0 {
+			//	prev = pck
+			//}
+			//
+			//timeStream += pck.Time - prev.Time
+			//prev = pck
+			//pck.Time = timeStream
 
 			ready, buf, err := muxer.WritePacket(pck, false)
 			if err != nil {

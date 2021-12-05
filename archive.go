@@ -1,8 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
-	"log"
 	"mse/av"
 	"mse/av/avutil"
 	"mse/cgo/ffmpeg"
@@ -99,58 +97,62 @@ func files(p []string, start time.Time, end time.Time, fileStart string, checkDu
 	length = 0
 	allDuration := time.Duration(0)
 	for _, pz := range p {
-		fs, err := ioutil.ReadDir(pz)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		for i, file := range fs {
-			if !file.IsDir() {
-				if file.Size() < (1024 * 500) {
-					continue
+		err := filepath.Walk(pz, func(pathFile string, info os.FileInfo, err error) error {
+			if err != nil {
+				Logger.Error(err.Error())
+				return nil
+			}
+			if !info.IsDir() {
+				if info.Size() < (1024 * 500) {
+					return nil
 				}
+
+				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(info.Name(), ".flv", ""))
+				if err != nil {
+					return nil
+				}
+
+				if timeFile.After(end) {
+					return nil
+				}
+
 				if checkDuration {
-					dur := duration(path.Join(pz, file.Name()))
+					dur := duration(pathFile)
 					if dur <= 0 {
-						continue
+						return nil
 					}
 					allDuration += dur * time.Second
 				}
 
-				timeFile, err := time.Parse("2006-01-02T15-04-05", strings.ReplaceAll(file.Name(), ".flv", ""))
-				if err != nil {
-					continue
-				}
-
-				if timeFile.After(end) {
-					break
-				}
-
 				if timeFile.Before(start) && !timeFile.Equal(start) {
 					if len(paths) == 0 && checkDuration {
-						dur := duration(path.Join(pz, file.Name()))
+						dur := duration(pathFile)
 						if timeFile.Add(dur * time.Second).After(start) {
-							paths = append(paths, path.Join(pz, file.Name()))
-							length += int(file.Size())
+							paths = append(paths, pathFile)
+							length += int(info.Size())
 						}
-					} else if file.Name() == fileStart {
-						paths = append(paths, path.Join(pz, file.Name()))
-						length += int(file.Size())
+					} else if info.Name() == fileStart {
+						paths = append(paths, pathFile)
+						length += int(info.Size())
 					}
-					continue
+					return nil
 				}
 
 				if timeFile.Equal(start) {
-					paths = append(paths, path.Join(pz, fs[i].Name()))
-					continue
+					paths = append(paths, pathFile)
+					return nil
 				}
 
 				if timeFile.After(start) {
-					paths = append(paths, path.Join(pz, file.Name()))
-					length += int(file.Size())
+					paths = append(paths, pathFile)
+					length += int(info.Size())
 				}
 
 			}
+			return nil
+		})
+		if err != nil {
+			continue
 		}
 	}
 	sortPath(paths)
@@ -160,7 +162,11 @@ func files(p []string, start time.Time, end time.Time, fileStart string, checkDu
 func filesStream(p []string, start time.Time, fileStart string) []string {
 	var paths []string
 	for _, pz := range p {
-		err := filepath.Walk(pz, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(pz, func(pathFile string, info os.FileInfo, err error) error {
+			if err != nil {
+				Logger.Error(err.Error())
+				return nil
+			}
 			if !info.IsDir() {
 				if info.Size() < (1024 * 500) {
 					return nil
@@ -172,13 +178,13 @@ func filesStream(p []string, start time.Time, fileStart string) []string {
 
 				if timeFile.Before(start) && !timeFile.Equal(start) {
 					if info.Name() == fileStart {
-						paths = append(paths, path)
+						paths = append(paths, pathFile)
 					}
 					return nil
 				}
 
 				if timeFile.After(start) || timeFile.Equal(start) {
-					paths = append(paths, path)
+					paths = append(paths, pathFile)
 				}
 			}
 			return nil

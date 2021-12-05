@@ -154,6 +154,7 @@ func (element *ConfigST) cast(uuid string, pck av.Packet) {
 			v.c <- pck
 		}
 	}
+
 }
 
 func (element *ConfigST) ext(uuid string) bool {
@@ -212,6 +213,7 @@ func (element *ConfigST) clDe(uuid, cuuid string) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
 	if element.ext(uuid) {
+		close(element.Streams[uuid].Cl[cuuid].c)
 		delete(element.Streams[uuid].Cl, cuuid)
 	}
 }

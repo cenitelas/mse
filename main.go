@@ -5,6 +5,7 @@ import (
 	"mse/format"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 )
 
@@ -13,6 +14,8 @@ func init() {
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU() + 1)
+	log.Println("COUNT PROCS = ", runtime.GOMAXPROCS(0))
 	go serveHTTP()
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
