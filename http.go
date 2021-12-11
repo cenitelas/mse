@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/websocket"
+	"strconv"
 	"strings"
 
-	//"golang.org/x/net/websocket"
-	"github.com/gorilla/websocket"
+	//"github.com/gorilla/websocket"
 	"log"
 	"mse/av"
 	"mse/av/avutil"
@@ -17,11 +18,11 @@ import (
 	"time"
 )
 
-var upGrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
+//var upGrader = websocket.Upgrader{
+//	CheckOrigin: func(r *http.Request) bool {
+//		return true
+//	},
+//}
 
 func serveHTTP() {
 	router := gin.Default()
@@ -33,11 +34,16 @@ func serveHTTP() {
 	}))
 	router.POST("/player", player)
 	router.POST("/remove", remove)
-	router.GET("/ws-archive", wsArchive)
-	router.GET("/online", online)
+	router.GET("/ws-archive", func(c *gin.Context) {
+		handler := websocket.Handler(wsArchive)
+		handler.ServeHTTP(c.Writer, c.Request)
+	})
+	router.GET("/online", func(c *gin.Context) {
+		handler := websocket.Handler(online)
+		handler.ServeHTTP(c.Writer, c.Request)
+	})
 	router.GET("/online-http", onlineHttp)
 	router.GET("/archive-http", httpArchive)
-	router.GET("/echo", echo)
 	router.GET("/archive", archive)
 	err := router.Run(Config.Server.HTTPPort)
 	if err != nil {
@@ -196,41 +202,29 @@ func archive(c *gin.Context) {
 		}
 	}
 }
-func echo(c *gin.Context) {
-	ws, err := upGrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		Logger.Error(err.Error())
+
+func wsArchive(ws *websocket.Conn) {
+	queryPath := ws.Request().FormValue("path")
+	if len(queryPath) == 0 {
+		Logger.Error("Path required")
 		return
 	}
-	defer ws.Close()
-	_, message, err := ws.ReadMessage()
-	if err != nil {
-		log.Println(err)
-	}
-	log.Println(message)
-	err = ws.WriteMessage(websocket.BinaryMessage, []byte{})
-	if err != nil {
-		log.Println(err)
-	}
-}
-func wsArchive(c *gin.Context) {
-	var st = struct {
-		Path      string `form:"path" binding:"required"`
-		Start     string `form:"start" binding:"required"`
-		Speed     int    `form:"speed"`
-		FileStart string `form:"file_start"`
-	}{Speed: 1}
-	if err := c.Bind(&st); !errors.Is(err, nil) {
-		Logger.Error(err.Error())
+	paths := strings.Split(queryPath, ",")
+
+	queryStart := ws.Request().FormValue("start")
+	if queryStart == "" {
+		Logger.Error("Start required")
 		return
 	}
-	path := strings.Split(st.Path, ",")
-	start, err := time.Parse("2006-01-02 15:04:05", st.Start)
+
+	querySpeed, err := strconv.Atoi(ws.Request().FormValue("speed"))
 	if err != nil {
-		Logger.Error(err.Error())
-		return
+		querySpeed = 1
 	}
-	ws, err := upGrader.Upgrade(c.Writer, c.Request, nil)
+
+	queryFileStart := ws.Request().FormValue("file_start")
+
+	start, err := time.Parse("2006-01-02 15:04:05", queryStart)
 	if err != nil {
 		Logger.Error(err.Error())
 		return
@@ -244,7 +238,7 @@ func wsArchive(c *gin.Context) {
 	codecs := make(chan []av.CodecData)
 	packet := make(chan av.Packet)
 	status := make(chan bool)
-	go ArchiveWorker(packet, status, path, start, codecs, st.FileStart, st.Speed)
+	go ArchiveWorker(packet, status, paths, start, codecs, queryFileStart, querySpeed)
 	mux := mp4f.NewMuxer(nil)
 
 	PlayStreamArchive(packet, status, ws, mux, codecs)
@@ -279,47 +273,37 @@ func httpArchive(c *gin.Context) {
 	Logger.Success(fmt.Sprintf("Close stream %s", start.String()))
 
 }
-func online(c *gin.Context) {
-	var data = struct {
-		Suuid string `form:"uuid" binding:"required"`
-	}{}
+func online(ws *websocket.Conn) {
 
-	if err := c.Bind(&data); !errors.Is(err, nil) {
-		Logger.Error(err.Error())
-		return
-	}
-	ws, err := upGrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		Logger.Error(err.Error())
-		return
-	}
+	suuid := ws.Request().URL.Query().Get("uuid")
+	log.Println(suuid)
 	defer ws.Close()
-	err = ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
+	err := ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
 	if err != nil {
 		Logger.Error(err.Error())
 		return
 	}
-	if !Config.ext(data.Suuid) {
-		Logger.Error(fmt.Sprintf("Stream %s not exists", data.Suuid))
+	if !Config.ext(suuid) {
+		Logger.Error(fmt.Sprintf("Stream %s not exists", suuid))
 		ws.Close()
 		return
 	}
-	Config.connectIncrease(data.Suuid)
-	Config.Run(data.Suuid)
-	cuuid, packet := Config.clAd(data.Suuid)
-	defer Config.clDe(data.Suuid, cuuid)
-	codecs := Config.coGe(data.Suuid)
+	Config.connectIncrease(suuid)
+	Config.Run(suuid)
+	cuuid, packet := Config.clAd(suuid)
+	defer Config.clDe(suuid, cuuid)
+	codecs := Config.coGe(suuid)
 	muxer := mp4f.NewMuxer(nil)
 	err = InitMuxer(muxer, codecs, ws)
 	if err != nil {
 		Logger.Error(err.Error())
-		Config.connectDecrease(data.Suuid)
+		Config.connectDecrease(suuid)
 		return
 	}
-	Logger.Info("Client connect to stream " + data.Suuid)
-	PlayStreamRTSP(data.Suuid, ws, packet, muxer)
-	Logger.Info("Client disconnect to stream " + data.Suuid)
-	Config.connectDecrease(data.Suuid)
+	Logger.Info("Client connect to stream " + suuid)
+	PlayStreamRTSP(suuid, ws, packet, muxer)
+	Logger.Info("Client disconnect to stream " + suuid)
+	Config.connectDecrease(suuid)
 }
 func onlineHttp(c *gin.Context) {
 	var data = struct {

@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
+	//"github.com/gorilla/websocket"
+	"golang.org/x/net/websocket"
 	"log"
 	"mse/av"
 	"mse/av/avutil"
@@ -37,25 +38,24 @@ type Video struct {
 }
 
 type viewer struct {
-	c chan av.Packet
+	c chan *av.Packet
 }
 
 func RTSPWorker(stream *Stream) {
 	rtsp.DebugRtsp = false
 	inRtsp, err := rtsp.Dial(stream.URL)
-	inRtsp.RtspTimeout = time.Duration(time.Second * 20)
-	inRtsp.RtpKeepAliveTimeout = time.Duration(time.Second * 20)
-	defer inRtsp.Close()
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
 		Config.RunUnlock(stream.Uuid)
 		return
 	}
+	defer inRtsp.Close()
 	codecs, err := inRtsp.Streams()
 	if err != nil {
 		Logger.Error(err.Error())
 	}
 	var codec av.CodecData
+
 	if len(codecs) > 0 {
 		codec = codecs[0]
 	} else {
@@ -80,7 +80,6 @@ func RTSPWorker(stream *Stream) {
 		}
 
 		var pck av.Packet
-
 		if pck, err = inRtsp.ReadPacket(); err != nil {
 			inRtsp.Close()
 			Logger.Error(err.Error())
@@ -92,7 +91,7 @@ func RTSPWorker(stream *Stream) {
 		if codecs[pck.Idx].Type().IsAudio() {
 			continue
 		}
-		Config.cast(stream.Uuid, pck)
+		go Config.cast(stream.Uuid, &pck)
 	}
 }
 
@@ -135,7 +134,7 @@ func RTMPWorker(stream *Stream) {
 		if codecs[pck.Idx].Type().IsAudio() {
 			continue
 		}
-		Config.cast(stream.Uuid, pck)
+		Config.cast(stream.Uuid, &pck)
 	}
 }
 
@@ -259,11 +258,12 @@ func ArchiveWorker(packet chan av.Packet, socketStatus chan bool, paths []string
 	channel.Data.Close()
 }
 
-func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, muxer *mp4f.Muxer) {
+func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan *av.Packet, muxer *mp4f.Muxer) {
 	statusSocket := make(chan bool)
 	go func() {
 		for {
-			_, _, err := ws.ReadMessage()
+			var message string
+			err := websocket.Message.Receive(ws, &message)
 			if err != nil {
 				statusSocket <- false
 				ws.Close()
@@ -301,7 +301,7 @@ func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, mux
 			//prev = pck
 			//pck.Time = timeStream
 
-			ready, buf, err := muxer.WritePacket(pck, false)
+			ready, buf, err := muxer.WritePacket(*pck, false)
 			if err != nil {
 				Logger.Error(err.Error())
 				return
@@ -313,7 +313,7 @@ func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, mux
 					Logger.Error(err.Error())
 					return
 				}
-				err = ws.WriteMessage(websocket.BinaryMessage, buf)
+				err = websocket.Message.Send(ws, buf)
 				if err != nil {
 					Logger.Error(err.Error())
 					return
@@ -333,10 +333,12 @@ func PlayStreamRTSP(suuid string, ws *websocket.Conn, packet chan av.Packet, mux
 func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websocket.Conn, muxer *mp4f.Muxer, codecControl chan []av.CodecData) {
 	go func() {
 		for {
-			_, _, err := ws.ReadMessage()
+			var message string
+			err := websocket.Message.Receive(ws, &message)
 			if err != nil {
 				statusSocket <- false
 				ws.Close()
+				return
 			}
 		}
 	}()
@@ -356,7 +358,7 @@ func PlayStreamArchive(packet chan av.Packet, statusSocket chan bool, ws *websoc
 					log.Println(err)
 					return
 				}
-				err = ws.WriteMessage(websocket.BinaryMessage, buf)
+				err = websocket.Message.Send(ws, buf)
 				if err != nil {
 					log.Println(err)
 					return
@@ -390,7 +392,7 @@ func PlayStreamArchiveHttp(packet chan av.Packet, statusSocket chan bool, c *gin
 	}
 }
 
-func PlayStreamRTSPHTTP(c *gin.Context, packet chan av.Packet, muxer *mp4f.Muxer) {
+func PlayStreamRTSPHTTP(c *gin.Context, packet chan *av.Packet, muxer *mp4f.Muxer) {
 	var data = struct {
 		Suuid string `form:"uuid" binding:"required"`
 	}{}
@@ -429,7 +431,7 @@ func PlayStreamRTSPHTTP(c *gin.Context, packet chan av.Packet, muxer *mp4f.Muxer
 			//prev = pck
 			//pck.Time = timeStream
 
-			ready, buf, err := muxer.WritePacket(pck, false)
+			ready, buf, err := muxer.WritePacket(*pck, false)
 			if err != nil {
 				Logger.Error(err.Error())
 				return
@@ -460,12 +462,12 @@ func InitMuxer(muxer *mp4f.Muxer, codec []av.CodecData, ws *websocket.Conn) erro
 
 	meta, init := muxer.GetInit(0)
 
-	err = ws.WriteMessage(websocket.BinaryMessage, append([]byte{9}, meta...))
+	err = websocket.Message.Send(ws, append([]byte{9}, meta...))
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Websocket: %s", err.Error()))
 		return err
 	}
-	err = ws.WriteMessage(websocket.BinaryMessage, init)
+	err = websocket.Message.Send(ws, init)
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Websocket: %s", err.Error()))
 		return err

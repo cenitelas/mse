@@ -143,18 +143,14 @@ func (element *ConfigST) HasViewer(uuid string) bool {
 	return false
 }
 
-func (element *ConfigST) cast(uuid string, pck av.Packet) {
+func (element *ConfigST) cast(uuid string, pck *av.Packet) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
-	if _, ok := element.Streams[uuid]; !ok {
-		return
-	}
 	for _, v := range element.Streams[uuid].Cl {
 		if len(v.c) < cap(v.c) {
 			v.c <- pck
 		}
 	}
-
 }
 
 func (element *ConfigST) ext(uuid string) bool {
@@ -186,11 +182,11 @@ func (element *ConfigST) coGe(suuid string) []av.CodecData {
 	return nil
 }
 
-func (element *ConfigST) clAd(uuid string) (string, chan av.Packet) {
+func (element *ConfigST) clAd(uuid string) (string, chan *av.Packet) {
 	element.mutex.Lock()
 	defer element.mutex.Unlock()
 	cuuid := pseudoUUID()
-	ch := make(chan av.Packet, 100)
+	ch := make(chan *av.Packet, 100)
 	element.Streams[uuid].Cl[cuuid] = viewer{c: ch}
 	return cuuid, ch
 }
