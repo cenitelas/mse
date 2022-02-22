@@ -1,0 +1,1 @@
+GOOS="linux" GOARCH="amd64" CGO_ENABLED="1" CC="/usr/local/opt/mingw-w64/bin/x86_64-w64-mingw32-gcc" go build

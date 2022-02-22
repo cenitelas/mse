@@ -1,0 +1,76 @@
+[MSE 31-10-2021 18:50:29] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:50:48] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:52:12] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:52:16] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:53:40] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:53:43] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:55:07] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:55:10] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:56:34] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:56:37] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:58:01] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:58:04] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:59:28] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 18:59:31] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:00:56] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:00:59] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:02:23] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:02:27] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:03:51] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:03:54] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:05:10] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:06:02] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:07:15] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:07:37] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:09:14] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:09:31] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:10:02] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:10:46] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:10:46] INFO | Client connect to stream a75750b2-5415-4bea-b148-91eefff60a95
+[MSE 31-10-2021 19:11:13] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:11:24] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:16:28] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:16:46] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:19:56] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:20:08] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:20:08] INFO | Client connect to stream 6848c684-6b53-4aaa-80a2-33866cda3e3d
+[MSE 31-10-2021 19:21:31] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:21:35] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:22:59] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:24:25] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:24:36] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:35:19] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:35:33] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:35:33] INFO | Client connect to stream 33e1f321-dfad-448f-b2fb-6f369f024958
+[MSE 31-10-2021 19:37:15] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:37:32] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:37:32] INFO | Client connect to stream 30135d8e-60b6-4aab-8c6a-663a274c6a2f
+[MSE 31-10-2021 19:39:05] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:39:37] INFO | Stream exist: rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:40:16] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:40:16] INFO | Client connect to stream d2cb81b0-7f35-4787-8fc8-a31d7aeebc39
+[MSE 31-10-2021 19:41:41] INFO | Reconnect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:41:44] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:42:18] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:50:50] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:52:43] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:55:06] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 19:57:33] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:08:40] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:17:48] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:42:57] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:45:52] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:48:51] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:50:36] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:51:13] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:52:12] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:52:35] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:52:36] INFO | Client connect to stream 52b8ea79-0657-4f58-8db7-63ab7fac7db2
+[MSE 31-10-2021 20:53:09] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:53:25] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:53:25] INFO | Client connect to stream 9accf22f-064d-434f-bff7-9fa0643e2bc7
+[MSE 31-10-2021 20:57:34] INFO | Push :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:57:45] SUCCESS | Connect :rtsp://view:123456789zz@10.20.62.67:554/cam/realmonitor?channel=1&subtype=0&unicast=true
+[MSE 31-10-2021 20:57:46] INFO | Client connect to stream 329c0823-edc6-4b4a-bfb5-97aced656804
+[MSE 31-10-2021 20:57:59] INFO | Client disconnect to stream 329c0823-edc6-4b4a-bfb5-97aced656804
+[MSE 31-10-2021 20:57:59] INFO | Connect clients is 0

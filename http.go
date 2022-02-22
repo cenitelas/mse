@@ -274,9 +274,8 @@ func httpArchive(c *gin.Context) {
 
 }
 func online(ws *websocket.Conn) {
-
 	suuid := ws.Request().URL.Query().Get("uuid")
-	log.Println(suuid)
+	defer Config.connectDecrease(suuid)
 	defer ws.Close()
 	err := ws.SetWriteDeadline(time.Now().Add(60 * time.Second))
 	if err != nil {
@@ -303,13 +302,12 @@ func online(ws *websocket.Conn) {
 	Logger.Info("Client connect to stream " + suuid)
 	PlayStreamRTSP(suuid, ws, packet, muxer)
 	Logger.Info("Client disconnect to stream " + suuid)
-	Config.connectDecrease(suuid)
 }
 func onlineHttp(c *gin.Context) {
 	var data = struct {
 		Suuid string `form:"uuid" binding:"required"`
 	}{}
-
+	defer Config.connectDecrease(data.Suuid)
 	if err := c.Bind(&data); !errors.Is(err, nil) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -330,5 +328,4 @@ func onlineHttp(c *gin.Context) {
 	Logger.Info("Client connect to stream " + data.Suuid)
 	PlayStreamRTSPHTTP(c, packet, muxer)
 	Logger.Info("Client disconnect to stream " + data.Suuid)
-	Config.connectDecrease(data.Suuid)
 }

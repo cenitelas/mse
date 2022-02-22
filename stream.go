@@ -3,9 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+
 	"github.com/gin-gonic/gin"
+
 	//"github.com/gorilla/websocket"
-	"golang.org/x/net/websocket"
 	"log"
 	"mse/av"
 	"mse/av/avutil"
@@ -18,6 +19,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"golang.org/x/net/websocket"
 )
 
 type Stream struct {
@@ -43,7 +46,7 @@ type viewer struct {
 
 func RTSPWorker(stream *Stream) {
 	rtsp.DebugRtsp = false
-	inRtsp, err := rtsp.Dial(stream.URL)
+	inRtsp, err := rtsp.DialTimeout(stream.URL, time.Duration(time.Second*20))
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error :%s", err.Error()))
 		Config.RunUnlock(stream.Uuid)
@@ -91,7 +94,7 @@ func RTSPWorker(stream *Stream) {
 		if codecs[pck.Idx].Type().IsAudio() {
 			continue
 		}
-		go Config.cast(stream.Uuid, &pck)
+		Config.cast(stream.Uuid, &pck)
 	}
 }
 

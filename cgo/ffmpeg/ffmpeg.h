@@ -2,10 +2,10 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
-#include <libavresample/avresample.h>
 #include <libavutil/opt.h>
 #include <string.h>
 #include <libswscale/swscale.h>
+#include <libavresample/avresample.h>
 
 typedef struct {
 	AVCodec *codec;

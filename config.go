@@ -3,10 +3,11 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	uuid2 "github.com/google/uuid"
 	"mse/av"
 	"sync"
 	"time"
+
+	uuid2 "github.com/google/uuid"
 )
 
 var Config = ConfigST{Server: ServerST{HTTPPort: ":4090"}, Streams: map[string]*Stream{}}
@@ -26,6 +27,7 @@ func (element *ConfigST) Run(uuid string) {
 	defer element.mutex.Unlock()
 	if tmp, ok := element.Streams[uuid]; ok {
 		if !tmp.RunLock {
+			Logger.Info("SEND!!!")
 			tmp.RunLock = true
 			element.Streams[uuid] = tmp
 			if tmp.Type == "rtmp" {
@@ -43,7 +45,7 @@ func (element *ConfigST) PushStream(url string, t string) string {
 	}
 	exists := element.StreamExists(url)
 	if exists != nil {
-		Logger.Info(fmt.Sprintf("Stream exist: %s", url))
+		Logger.Info(fmt.Sprintf("Stream exist: %s, viewers:%d", url, Config.connectGet(exists.Uuid)))
 		return exists.Uuid
 	}
 

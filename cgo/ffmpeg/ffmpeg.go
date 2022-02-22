@@ -1,7 +1,11 @@
+//go:build linux || darwin || windows
+
 package ffmpeg
 
 /*
-#cgo LDFLAGS: -lavformat -lavutil -lavcodec -lavresample -lswscale
+#cgo CFLAGS: -I/opt/homebrew/Cellar/ffmpeg@4/4.4.1/include
+#cgo LDFLAGS: -L/opt/homebrew/Cellar/ffmpeg@4/4.4.1/lib -lavformat -lavutil -lavcodec -lavresample -lswscale
+#cgo amd64 LDFLAGS: -L/Users/aleksandratcanov/ffmpeg -lavformat -lavutil -lavcodec -lavresample -lswscale
 #include "ffmpeg.h"
 void ffinit() {
 	av_register_all();
